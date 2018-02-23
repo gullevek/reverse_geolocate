@@ -107,38 +107,31 @@ def reverseGeolocate(longitude, latitude):
                     # print("Address {}".format(entry['address_components']))
                     # type
                     # -> country,
-                    # -> administrative_area (1),
+                    # -> administrative_area (1, 2),
                     # -> locality,
-                    # -> sublocality (_level_1 or 2 first found)
+                    # -> sublocality (_level_1 or 2 first found, then route)
                     for addr in entry['address_components']:
                         # print("Addr: {}".format(addr))
                         # country code + country
                         if 'country' in addr['types'] and not geolocation['CountryCode']:
                             geolocation['CountryCode'] = addr['short_name']
                             geolocation['Country'] = addr['long_name']
-                            # print("Code: {}, Country: {}".format(country_code, country))
                         # state
                         if 'administrative_area_level_1' in addr['types'] and not geolocation['State']:
                             geolocation['State'] = addr['long_name']
-                            # print("State (1): {}".format(state))
                         if 'administrative_area_level_2' in addr['types'] and not geolocation['State']:
                             geolocation['State'] = addr['long_name']
-                            # print("State (2): {}".format(state))
                         # city
                         if 'locality' in addr['types'] and not geolocation['City']:
                             geolocation['City'] = addr['long_name']
-                            # print("City: {}".format(city))
                         # location
                         if 'sublocality_level_1' in addr['types'] and not geolocation['Location']:
                             geolocation['Location'] = addr['long_name']
-                            # print("Location (1): {}".format(location))
                         if 'sublocality_level_2' in addr['types'] and not geolocation['Location']:
                             geolocation['Location'] = addr['long_name']
-                            # print("Location (1): {}".format(location))
                         # if all failes try route
                         if 'route' in addr['types'] and not geolocation['Location']:
                             geolocation['Location'] = addr['long_name']
-                            # print("Location (R): {}".format(location))
         # write OK status
         geolocation['status'] = response.json()['status']
     else:
