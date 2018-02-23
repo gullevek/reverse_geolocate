@@ -558,19 +558,19 @@ for xmp_file in work_files:
 lrdb.close()
 
 # end stats
-print("{}".format('=' * 30))
-print("XMP Files found       : {:,}".format(count['all']))
-print("Updated               : {:,}".format(count['changed']))
-print("Skipped               : {:,}".format(count['skipped']))
-print("New GeoLocation Google: {:,}".format(count['google']))
-print("GeoLocation from Cache: {:,}".format(count['cache']))
-print("Failed for Reverse Geo: {:,}".format(count['failed']))
+print("{}".format('=' * 37))
+print("XMP Files found             : {:7,}".format(count['all']))
+print("Updated                     : {:7,}".format(count['changed']))
+print("Skipped                     : {:7,}".format(count['skipped']))
+print("New GeoLocation Google      : {:7,}".format(count['google']))
+print("GeoLocation from Cache      : {:7,}".format(count['cache']))
+print("Failed reverse GeoLocate    : {:7,}".format(count['failed']))
 if use_lightroom:
-    print("GeoLoc from Lightroom : {:,}".format(count['lightroom']))
-    print("No Lightroom data     : {:,}".format(count['not_found']))
+    print("GeoLocaction from Lightroom : {:7,}".format(count['lightroom']))
+    print("No Lightroom data           : {:7,}".format(count['not_found']))
 # if we have failed data
 if len(failed_files) > 0:
-    print("{}".format('-' * 30))
+    print("{}".format('-' * 37))
     print("Files that failed to update:")
     print("{}".format(', '.join(failed_files)))
 
