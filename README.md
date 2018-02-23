@@ -10,7 +10,7 @@ This script used the [Python XMP Tool kit](http://python-xmp-toolkit.readthedocs
 
 reverse_geolocate.py [-h] -x
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
-    [-l LIGHTROOM FOLDER]
+    [-l LIGHTROOM FOLDER] [-s]
     [-f <overwrite, location, city, state, country, countrycode>]
     [-g GOOGLE API KEY] [-n] [-v] [--debug] [--test]
 
@@ -20,6 +20,7 @@ Argument | Argument Value | Description
 --- | --- | ---
 -x, --xmp | XMP sidecar source folder or XMP sidecar file itself | Must given argument. It sets the path where the script will search for XMP sidecar files. It will traverse into subdirectories. A single XMP sidecar file can also be given. If the same file folder combination is found only one is processed.
 -l, --lightroom | Lightroom DB base folder | The folder where the .lrcat file is located. Optional, if this is set, LR values are read before any Google maps connection is done. Fills the Latitude and Longitude and the location names. Lightroom data never overwrites data already set in the XMP sidecar file. It is recommended to have Lightroom write the XMP sidecar file before this script is run
+-s, --strict | | Do strict check for Lightroom files and include the path into the check
 -f, --field | Keyword: overwrite, location, city, state, country, countrycode | In the default no data is overwritten if it is already set. With the 'overwrite' flag all data is set new from the Google Maps location data. Other arguments are each of the location fields and if set only this field will be set. This can be combined with the 'overwrite' flag to overwrite already set data
 -n, --nobackup | | Do not create a backup of XMP sidecar file when it is changed
 -g, --google | Google Maps API Key | If available, to avoid the access limitations to the reverse location lookup
@@ -29,7 +30,7 @@ Argument | Argument Value | Description
 
 The script will created a backup of the current sidecar file named <original name>.BK.xmp in the same location as the original file.
 
-The Lightroom lookup currently only uses the file name. Not that this can and will fail if there are more than one file with the same name in the database. It is planned to use the base path as additional search key. If more than one is found, no Lightroom data is used.
+If the Lightroom lookup is used without the --strict argument and several files with the same name are found, they will be skipped for usage.
 
 #### Example
 

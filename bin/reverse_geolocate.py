@@ -259,6 +259,13 @@ parser.add_argument('-l', '--lightroom',
     help = 'Lightroom catalogue base folder'
 )
 
+# strict LR check with base path next to the file base name
+parser.add_argument('-s', '--strict',
+    dest = 'lightroom_strict',
+    action = 'store_true',
+    help = 'Do strict check for Lightroom files including Path in query'
+)
+
 # set behaviour override
 # FLAG: default: only set not filled
 # other: overwrite all or overwrite if one is missing, overwrite specifc field (as defined below)
@@ -304,6 +311,9 @@ args = parser.parse_args()
 ##############################################################
 ### MAIN CODE
 ##############################################################
+
+if not args.verbose:
+    args.verbose = 0
 
 if args.debug:
     print("### ARGUMENT VARS: X: {}, L: {}, F: {}, G: {}, V: {}, D: {}, T: {}".format(args.xmp_sources, args.lightroom_folder, args.field_controls, args.google_api_key, args.verbose, args.debug, args.test))
@@ -364,7 +374,8 @@ count = {
     'changed': 0,
     'failed': 0,
     'skipped': 0,
-    'not_found': 0
+    'not_found': 0,
+    'many_found': 0,
 }
 
 # do lightroom stuff only if we have the lightroom folder
@@ -380,6 +391,9 @@ if args.lightroom_folder:
     query += 'LEFT JOIN AgInternedIptcIsoCountryCode ON AgHarvestedIptcMetadata.isoCountryCodeRef = AgInternedIptcIsoCountryCode.id_local '
     query += 'WHERE Adobe_images.rootFile = AgLibraryFile.id_local AND Adobe_images.id_local = AgHarvestedExifMetadata.image AND AgLibraryFile.folder = AgLibraryFolder.id_local AND AgLibraryFolder.rootFolder = AgLibraryRootFolder.id_local '
     query += 'AND AgLibraryFile.baseName = ?'
+    # absolutePath + pathFromRoot = path of XMP file - XMP file
+    if args.lightroom_strict:
+        query += 'AND AgLibraryRootFolder.absolutePath || AgLibraryFolder.pathFromRoot = ?'
 
     # connect to LR database for reading
     # open the folder and look for the first lrcat file in there
@@ -438,13 +452,23 @@ for xmp_file in work_files:
     if use_lightroom:
         # get the base file name, we need this for lightroom
         xmp_file_basename = os.path.splitext(os.path.split(xmp_file)[1])[0]
+        # for strict check we need to get the full path, and add / as the LR stores the last folder with /
+        if args.lightroom_strict:
+            xmp_file_path = "{}/{}".format(os.path.split(xmp_file)[0], '/')
         # try to get this file name from the DB
-        # NOTE: We should search here with folder too in case for double same name entries
-        cur.execute(query, [xmp_file_basename])
+        lr_query_params = [xmp_file_basename]
+        if args.lightroom_strict:
+            lr_query_params.append(xmp_file_path)
+        cur.execute(query, lr_query_params)
         # get the row data
         lrdb_row = cur.fetchone()
+        # abort the read because we found more than one row
+        if cur.fetchone() is not None:
+            print("(!) Lightroom DB returned one than more row")
+            lightroom_data_ok = False
+            count['many_found'] += 1
         # Notify if we couldn't find one
-        if not lrdb_row:
+        elif not lrdb_row:
             print("(!) Could not get data from Lightroom DB")
             lightroom_data_ok = False
             count['not_found'] += 1
@@ -512,6 +536,7 @@ for xmp_file in work_files:
             for loc in data_set_loc:
                 # only write to XMP if overwrite check passes
                 if checkOverwrite(data_set[loc], loc, args.field_controls):
+                    data_set[loc] = google_location[loc]
                     xmp.set_property(xmp_fields[loc], loc, google_location[loc])
                     write_file = True
             if write_file:
@@ -527,7 +552,7 @@ for xmp_file in work_files:
         if use_lightroom and lightroom_data_ok:
             for key in data_set:
                 # if not the same (to original data) and passes overwrite check
-                if data_set[key] != data_set_original[key] and checkOverwrite(data_set[key], key, args.field_controls):
+                if data_set[key] != data_set_original[key] and checkOverwrite(data_set_original[key], key, args.field_controls):
                     xmp.set_property(xmp_fields[key], key, data_set[key])
                     write_file = True;
             if write_file:
@@ -567,7 +592,8 @@ print("GeoLocation from Cache      : {:7,}".format(count['cache']))
 print("Failed reverse GeoLocate    : {:7,}".format(count['failed']))
 if use_lightroom:
     print("GeoLocaction from Lightroom : {:7,}".format(count['lightroom']))
-    print("No Lightroom data           : {:7,}".format(count['not_found']))
+    print("No Lightroom data found     : {:7,}".format(count['not_found']))
+    print("More than one found in LR   : {:7,}".format(count['many_found']))
 # if we have failed data
 if len(failed_files) > 0:
     print("{}".format('-' * 37))
