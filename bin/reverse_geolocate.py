@@ -74,22 +74,31 @@ def reverseGeolocate(longitude, latitude):
     # sensor (why?)
     sensor = 'false'
     # request to google
-    base = "http://maps.googleapis.com/maps/api/geocode/json?"
+    # if a google api key is used, the request has to be via https
+    protocol = 'https://' if args.google_api_key else 'http://'
+    base = "maps.googleapis.com/maps/api/geocode/json?"
+    # build the base params
     params = "latlng={lat},{lon}&sensor={sensor}".format(lon = lat_long['longitude'], lat = lat_long['latitude'], sensor = sensor)
+    # if we have a google api key, add it here
     key = "&key={}".format(args.google_api_key) if args.google_api_key else ''
-    url = "{base}{params}{key}".format(base = base, params = params, key = key)
+    # build the full url and send it to google
+    url = "{protocol}{base}{params}{key}".format(protocol = protocol, base = base, params = params, key = key)
     response = requests.get(url)
-    # sift through the response to get the best matching entry
+    # loop through the json response to get the best matching entry
     geolocation = {
         'CountryCode': '',
         'Country': '',
         'State': '',
         'City': '',
-        'Location': ''
+        'Location': '',
+        # below for error reports
+        'status': '',
+        'error_message': ''
     }
-    # print("Google response: {} => TEXT: {} JSON: {}".format(response, response.text, response.json()))
+    if args.debug and args.verbose >= 1:
+        print("Google response: {} => TEXT: {} JSON: {}".format(response, response.text, response.json()))
     # print("Error: {}".format(response.json()['status']))
-    if response.json()['status'] is not 'INVALID_REQUEST':
+    if response.json()['status'] == 'OK':
         # first entry for type = premise
         for entry in response.json()['results']:
             for sub_entry in entry:
@@ -130,8 +139,13 @@ def reverseGeolocate(longitude, latitude):
                         if 'route' in addr['types'] and not geolocation['Location']:
                             geolocation['Location'] = addr['long_name']
                             # print("Location (R): {}".format(location))
+        # write OK status
+        geolocation['status'] = response.json()['status']
     else:
-        print("Error in request: {}".format(response.json()['error_message']))
+        geolocation['error_message'] = response.json()['error_message']
+        geolocation['status'] = response.json()['status']
+        print("Error in request: {} {}".format(geolocation['status'] , geolocation['error_message']))
+
     # return
     return geolocation
 
@@ -254,15 +268,22 @@ parser.add_argument('-f', '--field',
     type = str.lower, # make it lowercase for check
     choices = ['overwrite', 'location', 'city', 'state', 'country', 'countrycode'],
     dest = 'field_controls',
-    metavar = 'FIELD CONTROLS',
-    help = 'On default only set fields that are not set yet. Options are: Overwrite (write all new), Location, City, State, Country, CountryCode. Multiple can be given. If with overwrite the field will be overwritten if already set, else it will be always skipped'
+    metavar = '<overwrite, location, city, state, country, countrycode>',
+    help = 'On default only set fields that are not set yet. Options are: Overwrite (write all new), Location, City, State, Country, CountryCode. Multiple can be given for combination overwrite certain fields only or set only certain fields. If with overwrite the field will be overwritten if already set, else it will be always skipped.'
 )
 
 # Google Maps API key to overcome restrictions
 parser.add_argument('-g', '--google',
     dest = 'google_api_key',
-    metavar = 'GOOGLE_API_KEY',
+    metavar = 'GOOGLE API KEY',
     help = 'Set a Google API Maps key to overcome the default lookup limitations'
+)
+
+# Do not create backup files
+parser.add_argument('-n', '--nobackup',
+    dest = 'no_xmp_backup',
+    action = 'store_true',
+    help = 'Do not create a backup from the XMP file'
 )
 
 # verbose args for more detailed output
@@ -325,6 +346,8 @@ data_set_original = {}
 data_cache = {}
 # work files, all files + folders we need to work on
 work_files = []
+# all failed files
+failed_files = []
 # error flag
 error = False
 # use lightroom
@@ -406,7 +429,7 @@ if args.debug:
     print("### Work Files {}".format(work_files))
 # now we just loop through each file and work on them
 for xmp_file in work_files:
-    print("---> {}".format(xmp_file))
+    print("---> {}: ".format(xmp_file), end = '')
     #### ACTION FLAGs
     write_file = False
     lightroom_data_ok = True
@@ -463,6 +486,7 @@ for xmp_file in work_files:
     # base set done, now check if there is anything unset in the data_set, if yes do a lookup in google
     # run this through the overwrite checker to get unset if we have a forced overwrite
     has_unset = False
+    failed = False
     for loc in data_set_loc:
         if checkOverwrite(data_set[loc], loc, args.field_controls):
             has_unset = True
@@ -483,6 +507,7 @@ for xmp_file in work_files:
         # overwrite sets (note options check here)
         if args.debug:
             print("### Google Location: {}".format(google_location))
+        # must have at least the country set to write anything back
         if google_location['Country']:
             for loc in data_set_loc:
                 # only write to XMP if overwrite check passes
@@ -492,8 +517,8 @@ for xmp_file in work_files:
             if write_file:
                 count['google'] += 1
         else:
-            print("(!) Could not geo loaction for: {}".format(xmp_file))
-            count['failed'] += 1
+            print("(!) Could not geo loaction data ", end = '')
+            failed = True
     else:
         if args.debug:
             print("Lightroom data use: {}, Lightroom data ok: {}".format(use_lightroom, lightroom_data_ok))
@@ -511,15 +536,22 @@ for xmp_file in work_files:
     if write_file:
         if not args.test:
             # use copyfile to create a backup copy
-            copyfile(xmp_file, "{}.BK.{}".format(os.path.splitext(xmp_file)[0], os.path.splitext(xmp_file)[1]))
+            if not args.no_xmp_backup:
+                copyfile(xmp_file, "{}.BK{}".format(os.path.splitext(xmp_file)[0], os.path.splitext(xmp_file)[1]))
             # write back to riginal file
             with open(xmp_file, 'w') as fptr:
                 fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
         else:
-            print("[TEST] Would write {} to file {}".format(data_set, xmp_file))
+            print("[TEST] Would write {} ".format(data_set, xmp_file), end = '')
+        print("[UPDATED]")
         count['changed'] += 1
+    elif failed:
+        print("[FAILED]")
+        count['failed'] += 1
+        # log data to array for post print
+        failed_files.append(xmp_file)
     else:
-        print(". Data exists: SKIP")
+        print("[SKIP]")
         count['skipped'] += 1
 
 # close DB connection
@@ -527,15 +559,19 @@ lrdb.close()
 
 # end stats
 print("{}".format('=' * 30))
-print("Found XMP Files       : {:,}".format(count['all']))
+print("XMP Files found       : {:,}".format(count['all']))
 print("Updated               : {:,}".format(count['changed']))
 print("Skipped               : {:,}".format(count['skipped']))
 print("New GeoLocation Google: {:,}".format(count['google']))
 print("GeoLocation from Cache: {:,}".format(count['cache']))
 print("Failed for Reverse Geo: {:,}".format(count['failed']))
 if use_lightroom:
-    print("Geo from Lightroom    : {:,}".format(count['lightroom']))
+    print("GeoLoc from Lightroom : {:,}".format(count['lightroom']))
     print("No Lightroom data     : {:,}".format(count['not_found']))
-
+# if we have failed data
+if len(failed_files) > 0:
+    print("{}".format('-' * 30))
+    print("Files that failed to update:")
+    print("{}".format(', '.join(failed_files)))
 
 # __END__
