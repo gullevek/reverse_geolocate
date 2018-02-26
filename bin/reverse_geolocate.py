@@ -98,6 +98,8 @@ def reverseGeolocate(longitude, latitude):
         'status': '',
         'error_message': ''
     }
+    if args.debug:
+        print("Search for Lat: {}, Long: {}".format(lat_long['latitude'], lat_long['longitude']))
     if args.debug and args.verbose >= 1:
         print("Google response: {} => TEXT: {} JSON: {}".format(response, response.text, response.json()))
     # print("Error: {}".format(response.json()['status']))
