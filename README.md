@@ -27,7 +27,8 @@ reverse_geolocate.py [-h] -x
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
     [-l LIGHTROOM FOLDER] [-s]
     [-f <overwrite, location, city, state, country, countrycode>]
-    [-g GOOGLE API KEY] [-o] [-n] [-v] [--debug] [--test]
+    [-g GOOGLE API KEY] [-o] [-e EMIL ADDRESS] [-n]
+    [-v] [--debug] [--test]
 
 ### Arguments
 
@@ -39,6 +40,7 @@ Argument | Argument Value | Description
 -f, --field | Keyword: overwrite, location, city, state, country, countrycode | In the default no data is overwritten if it is already set. With the 'overwrite' flag all data is set new from the Google Maps location data. Other arguments are each of the location fields and if set only this field will be set. This can be combined with the 'overwrite' flag to overwrite already set data
 -n, --nobackup | | Do not create a backup of XMP sidecar file when it is changed
 -o, --openstreetmap | | Use OpenStreetMap instead of the default google maps
+-e, --email | email address | For OpenStreetMap with a large number of access
 -g, --google | Google Maps API Key | If available, to avoid the access limitations to the reverse location lookup
 -v, --verbose | | More verbose output. Currently not used
 --debug | | Full detailed debug output. Will print out alot of data

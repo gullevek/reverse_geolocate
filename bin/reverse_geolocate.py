@@ -125,9 +125,18 @@ def reverseGeolocateOpenStreetMap(longitude, latitude):
     language = 'en-US,en'
     # build query
     base = 'https://nominatim.openstreetmap.org/reverse.php?'
-    params = 'format={format}&lat={lat}&lon={lon}&accept-language={lang}&zoom=21'.format(lon = longitude, lat = latitude, format = query_format, lang = language)
-    url = "{base}{params}".format(base = base, params = params)
-    response = requests.get(url)
+    # parameters
+    payload = {
+        'format': query_format,
+        'lat': latitude,
+        'lon': longitude,
+        'accept-language': language
+    }
+    # if we have an email, add it here
+    if args.email:
+        payload['email'] = args.email
+    url = "{base}".format(base = base)
+    response = requests.get(url, params = payload)
     # debug output
     if args.debug:
         print("OpenStreetMap search for Lat: {}, Long: {}".format(latitude, longitude))
@@ -176,12 +185,16 @@ def reverseGeolocateGoogle(longitude, latitude):
     protocol = 'https://' if args.google_api_key else 'http://'
     base = "maps.googleapis.com/maps/api/geocode/json?"
     # build the base params
-    params = "latlng={lat},{lon}&sensor={sensor}".format(lon = longitude, lat = latitude, sensor = sensor)
+    payload = {
+        'latlng': '{lat},{lon}'.format(lon = longitude, lat = latitude),
+        'sensor': sensor
+    }
     # if we have a google api key, add it here
-    key = "&key={}".format(args.google_api_key) if args.google_api_key else ''
+    if args.google_api_key:
+        payload['key'] = args.google_api_key
     # build the full url and send it to google
-    url = "{protocol}{base}{params}{key}".format(protocol = protocol, base = base, params = params, key = key)
-    response = requests.get(url)
+    url = "{protocol}{base}".format(protocol = protocol, base = base)
+    response = requests.get(url, params = payload)
     # debug output
     if args.debug:
         print("Google search for Lat: {}, Long: {}".format(longitude, latitude))
@@ -379,6 +392,13 @@ parser.add_argument('-o', '--openstreetmap',
     help = 'Use openstreetmap instead of Google'
 )
 
+# email of open street maps requests
+parser.add_argument('-e', '--email',
+    dest = 'email',
+    metavar = 'EMIL ADDRESS',
+    help = 'An email address for OpenStreetMap'
+)
+
 # Do not create backup files
 parser.add_argument('-n', '--nobackup',
     dest = 'no_xmp_backup',
@@ -409,13 +429,31 @@ if not args.verbose:
     args.verbose = 0
 
 if args.debug:
-    print("### ARGUMENT VARS: X: {}, L: {}, F: {}, M: {}, G: {}, N; {}, V: {}, D: {}, T: {}".format(args.xmp_sources, args.lightroom_folder, args.field_controls, args.use_openstreetmap, args.google_api_key, args.no_xmp_backup, args.verbose, args.debug, args.test))
+    print("### ARGUMENT VARS: X: {}, L: {}, F: {}, M: {}, G: {}, E: {}, N; {}, V: {}, D: {}, T: {}".format(args.xmp_sources, args.lightroom_folder, args.field_controls, args.use_openstreetmap, args.google_api_key, args.email, args.no_xmp_backup, args.verbose, args.debug, args.test))
 
+# error flag
+error = False
 # set search map type
 map_type = 'google' if not args.use_openstreetmap else 'openstreetmap'
 # if -g and -o, error
 if args.google_api_key and args.use_openstreetmap:
-    print("You cannot set a Google API key and use openstreetmap at the seame time")
+    print("You cannot set a Google API key and use OpenStreetMap at the same time")
+    error = True
+# or if -g and -e
+if args.google_api_key and args.email:
+    print("You cannot set a Google API key and OpenStreetMap email at the same time")
+    error = True
+# or -e and no -o
+if args.email and not args.use_openstreetmap:
+    print("You cannot set an OpenStreetMap email and not use OpenStreetMap")
+    error = True
+# if email and not basic valid email (@ .)
+if args.email:
+    if re.match('^.+@.+\..+$', args.email):
+        print("Not a valid email for OpenStreetMap: {}".format(args.email))
+        error = True
+# on error exit here
+if error:
     sys.exit(1)
 
 # The XMP fields const lookup values
@@ -458,8 +496,6 @@ data_cache = {}
 work_files = []
 # all failed files
 failed_files = []
-# error flag
-error = False
 # use lightroom
 use_lightroom = False
 # cursors & query
