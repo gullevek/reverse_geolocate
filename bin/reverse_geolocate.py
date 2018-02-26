@@ -62,32 +62,35 @@ class readable_dir(argparse.Action):
 ### MAIN FUNCTIONS
 
 # METHOD: reverseGeolocate
-# PARAMS: latitude, longitude
-# RETURN: dict with location, city, state, country, country code
-#         if not fillable, entry is empty
-#         google images lookup base settings
-# SAMPLE: http://maps.googleapis.com/maps/api/geocode/json?latlng=35.6671355,139.7419185&sensor=false
-def reverseGeolocate(longitude, latitude):
+# PARAMS: latitude, longitude, map search target (google or openstreetmap)
+# RETURN: dict with all data (see below)
+# DESC  : wrapper to call to either the google or openstreetmap
+def reverseGeolocate(longitude, latitude, map_type):
     # clean up long/lat
     # they are stored with N/S/E/W if they come from an XMP
     # format: Deg,Min.Sec[NSEW]
     # NOTE: lat is N/S, long is E/W
     # detect and convert
     lat_long = longLatReg(longitude = longitude, latitude = latitude)
-    # sensor (why?)
-    sensor = 'false'
-    # request to google
-    # if a google api key is used, the request has to be via https
-    protocol = 'https://' if args.google_api_key else 'http://'
-    base = "maps.googleapis.com/maps/api/geocode/json?"
-    # build the base params
-    params = "latlng={lat},{lon}&sensor={sensor}".format(lon = lat_long['longitude'], lat = lat_long['latitude'], sensor = sensor)
-    # if we have a google api key, add it here
-    key = "&key={}".format(args.google_api_key) if args.google_api_key else ''
-    # build the full url and send it to google
-    url = "{protocol}{base}{params}{key}".format(protocol = protocol, base = base, params = params, key = key)
-    response = requests.get(url)
-    # loop through the json response to get the best matching entry
+    # which service to use
+    if map_type == 'google':
+        return reverseGeolocateGoogle(lat_long['longitude'], lat_long['latitude'])
+    elif map_type == 'openstreetmap':
+        return reverseGeolocateOpenStreetMap(lat_long['longitude'], lat_long['latitude'])
+    else:
+        return {
+            'Country': '',
+            'status': 'ERROR',
+            'error': 'Map type not valid'
+        }
+
+# METHOD: reverseGeolocateInit
+# PARAMS: longitude, latitude
+# RETURN: empty geolocation dictionary, or error flag if lat/long is not valid
+# DESC  : inits the dictionary for return, and checks the lat/long on valid
+#         returns geolocation dict with status = 'ERROR' if an error occurded
+def reverseGeolocateInit(longitude, latitude):
+    # basic dict format
     geolocation = {
         'CountryCode': '',
         'Country': '',
@@ -98,10 +101,92 @@ def reverseGeolocate(longitude, latitude):
         'status': '',
         'error_message': ''
     }
+    # error if long/lat is not valid
+    latlong_re = re.compile('^\d+\.\d+$')
+    if not latlong_re.match(str(longitude)) or not latlong_re.match(str(latitude)):
+        geolocation['status'] = 'ERROR'
+        geolocation['error_message'] = 'Latitude {} or Longitude {} are not valid'.format(latitude, longitude)
+    return geolocation
+
+# METHOD: reverseGeolocateOpenStreetMap
+# PARAMS: latitude, longitude
+# RETURN: OpenStreetMap reverse lookcation lookup
+#         dict with locaiton, city, state, country, country code
+#         if not fillable, entry is empty
+# SAMPLE: https://nominatim.openstreetmap.org/reverse.php?format=jsonv2&lat=<latitude>&lon=<longitude>&zoom=21&accept-languge=en-US,en&
+def reverseGeolocateOpenStreetMap(longitude, latitude):
+    # init
+    geolocation = reverseGeolocateInit(longitude, latitude)
+    if geolocation['status'] == 'ERROR':
+        return geolocation
+    # query format
+    query_format = 'jsonv2'
+    # language to return (english)
+    language = 'en-US,en'
+    # build query
+    base = 'https://nominatim.openstreetmap.org/reverse.php?'
+    params = 'format={format}&lat={lat}&lon={lon}&accept-language={lang}&zoom=21'.format(lon = longitude, lat = latitude, format = query_format, lang = language)
+    url = "{base}{params}".format(base = base, params = params)
+    response = requests.get(url)
+    # debug output
     if args.debug:
-        print("Search for Lat: {}, Long: {}".format(lat_long['latitude'], lat_long['longitude']))
+        print("OpenStreetMap search for Lat: {}, Long: {}".format(latitude, longitude))
     if args.debug and args.verbose >= 1:
-        print("Google response: {} => TEXT: {} JSON: {}".format(response, response.text, response.json()))
+        print("OpenStreetMap response: {} => JSON: {}".format(response, response.json()))
+    # type map
+    # Country to Location and for each in order of priority
+    type_map = {
+        'CountryCode': ['country_code'],
+        'Country': ['country'],
+        'State': ['state'],
+        'City': ['city', 'city_district', 'state_district'],
+        'Location': ['county', 'town', 'suburb', 'hamlet', 'neighbourhood', 'road']
+    }
+    # if not error
+    if 'error' not in response.json():
+        # get address block
+        addr = response.json()['address']
+        # loop for locations
+        for loc_index in type_map:
+            for index in type_map[loc_index]:
+                if index in addr and not geolocation[loc_index]:
+                    geolocation[loc_index] = addr[index]
+    else:
+        geolocation['status'] = 'ERROR'
+        geolocation['error_message'] = response.json()['error']
+        print("Error in request: {}".format(geolocation['error']))
+    # return
+    return geolocation
+
+# METHOD: reverseGeolocateGoogle
+# PARAMS: latitude, longitude
+# RETURN: Google Maps reverse location lookup
+#         dict with location, city, state, country, country code
+#         if not fillable, entry is empty
+# SAMPLE: http://maps.googleapis.com/maps/api/geocode/json?latlng=<latitude>,<longitude>&sensor=false&key=<api key>
+def reverseGeolocateGoogle(longitude, latitude):
+    # init
+    geolocation = reverseGeolocateInit(longitude, latitude)
+    if geolocation['status'] == 'ERROR':
+        return geolocation
+    # sensor (why?)
+    sensor = 'false'
+    # request to google
+    # if a google api key is used, the request has to be via https
+    protocol = 'https://' if args.google_api_key else 'http://'
+    base = "maps.googleapis.com/maps/api/geocode/json?"
+    # build the base params
+    params = "latlng={lat},{lon}&sensor={sensor}".format(lon = longitude, lat = latitude, sensor = sensor)
+    # if we have a google api key, add it here
+    key = "&key={}".format(args.google_api_key) if args.google_api_key else ''
+    # build the full url and send it to google
+    url = "{protocol}{base}{params}{key}".format(protocol = protocol, base = base, params = params, key = key)
+    response = requests.get(url)
+    # debug output
+    if args.debug:
+        print("Google search for Lat: {}, Long: {}".format(longitude, latitude))
+    if args.debug and args.verbose >= 1:
+        print("Google response: {} => JSON: {}".format(response, response.json()))
     # print("Error: {}".format(response.json()['status']))
     if response.json()['status'] == 'OK':
         # first entry for type = premise
@@ -115,34 +200,37 @@ def reverseGeolocate(longitude, latitude):
                     # -> administrative_area (1, 2),
                     # -> locality,
                     # -> sublocality (_level_1 or 2 first found, then route)
-                    for addr in entry['address_components']:
-                        # print("Addr: {}".format(addr))
-                        # country code + country
-                        if 'country' in addr['types'] and not geolocation['CountryCode']:
-                            geolocation['CountryCode'] = addr['short_name']
-                            geolocation['Country'] = addr['long_name']
-                        # state
-                        if 'administrative_area_level_1' in addr['types'] and not geolocation['State']:
-                            geolocation['State'] = addr['long_name']
-                        if 'administrative_area_level_2' in addr['types'] and not geolocation['State']:
-                            geolocation['State'] = addr['long_name']
-                        # city
-                        if 'locality' in addr['types'] and not geolocation['City']:
-                            geolocation['City'] = addr['long_name']
-                        # location
-                        if 'sublocality_level_1' in addr['types'] and not geolocation['Location']:
-                            geolocation['Location'] = addr['long_name']
-                        if 'sublocality_level_2' in addr['types'] and not geolocation['Location']:
-                            geolocation['Location'] = addr['long_name']
-                        # if all failes try route
-                        if 'route' in addr['types'] and not geolocation['Location']:
-                            geolocation['Location'] = addr['long_name']
+                    # so we get the data in the correct order
+                    for index in ['country', 'administrative_area_level_1', 'administrative_area_level_2', 'locality', 'sublocality_level_1', 'sublocality_level_2', 'route']:
+                        # loop through the entries in the returned json and find matching
+                        for addr in entry['address_components']:
+                            # print("Addr: {}".format(addr))
+                            # country code + country
+                            if index == 'country' and index in addr['types'] and not geolocation['CountryCode']:
+                                geolocation['CountryCode'] = addr['short_name']
+                                geolocation['Country'] = addr['long_name']
+                            # state
+                            if index == 'administrative_area_level_1' and index  in addr['types'] and not geolocation['State']:
+                                geolocation['State'] = addr['long_name']
+                            if index == 'administrative_area_level_2' and index  in addr['types'] and not geolocation['State']:
+                                geolocation['State'] = addr['long_name']
+                            # city
+                            if index == 'locality' and index  in addr['types'] and not geolocation['City']:
+                                geolocation['City'] = addr['long_name']
+                            # location
+                            if index == 'sublocality_level_1' and index  in addr['types'] and not geolocation['Location']:
+                                geolocation['Location'] = addr['long_name']
+                            if index == 'sublocality_level_2' and index  in addr['types'] and not geolocation['Location']:
+                                geolocation['Location'] = addr['long_name']
+                            # if all failes try route
+                            if index == 'route' and index  in addr['types'] and not geolocation['Location']:
+                                geolocation['Location'] = addr['long_name']
         # write OK status
         geolocation['status'] = response.json()['status']
     else:
         geolocation['error_message'] = response.json()['error_message']
         geolocation['status'] = response.json()['status']
-        print("Error in request: {} {}".format(geolocation['status'] , geolocation['error_message']))
+        print("Error in request: {} {}".format(geolocation['status'], geolocation['error_message']))
 
     # return
     return geolocation
@@ -284,6 +372,13 @@ parser.add_argument('-g', '--google',
     help = 'Set a Google API Maps key to overcome the default lookup limitations'
 )
 
+# use open street maps
+parser.add_argument('-o', '--openstreetmap',
+    dest = 'use_openstreetmap',
+    action = 'store_true',
+    help = 'Use openstreetmap instead of Google'
+)
+
 # Do not create backup files
 parser.add_argument('-n', '--nobackup',
     dest = 'no_xmp_backup',
@@ -314,7 +409,14 @@ if not args.verbose:
     args.verbose = 0
 
 if args.debug:
-    print("### ARGUMENT VARS: X: {}, L: {}, F: {}, G: {}, V: {}, D: {}, T: {}".format(args.xmp_sources, args.lightroom_folder, args.field_controls, args.google_api_key, args.verbose, args.debug, args.test))
+    print("### ARGUMENT VARS: X: {}, L: {}, F: {}, M: {}, G: {}, N; {}, V: {}, D: {}, T: {}".format(args.xmp_sources, args.lightroom_folder, args.field_controls, args.use_openstreetmap, args.google_api_key, args.no_xmp_backup, args.verbose, args.debug, args.test))
+
+# set search map type
+map_type = 'google' if not args.use_openstreetmap else 'openstreetmap'
+# if -g and -o, error
+if args.google_api_key and args.use_openstreetmap:
+    print("You cannot set a Google API key and use openstreetmap at the seame time")
+    sys.exit(1)
 
 # The XMP fields const lookup values
 # XML/XMP
@@ -366,7 +468,7 @@ cur = ''
 # count variables
 count = {
     'all': 0,
-    'google': 0,
+    'map': 0,
     'cache': 0,
     'lightroom': 0,
     'changed': 0,
@@ -490,7 +592,7 @@ for xmp_file in work_files:
     # is LR GPS and no XMP GPS => use LR and set XMP
     # same for location names
     # if missing in XMP but in LR -> set in XMP
-    # if missing in both do lookup in Google
+    # if missing in both do lookup in Maps
     if use_lightroom and lightroom_data_ok:
         # check lat/long separate
         if lrdb_row['gpsLatitude'] and not data_set['GPSLatitude']:
@@ -505,7 +607,7 @@ for xmp_file in work_files:
                 data_set[loc] = lrdb_row[loc]
                 if args.debug:
                     print("### -> LR: {} => {}".format(loc, lrdb_row[loc]))
-    # base set done, now check if there is anything unset in the data_set, if yes do a lookup in google
+    # base set done, now check if there is anything unset in the data_set, if yes do a lookup in maps
     # run this through the overwrite checker to get unset if we have a forced overwrite
     has_unset = False
     failed = False
@@ -518,27 +620,27 @@ for xmp_file in work_files:
         if args.debug:
             print("### *** CACHE: {}: {}".format(cache_key, 'NO' if cache_key not in data_cache else 'YES'))
         if cache_key not in data_cache:
-            # get location from google
-            google_location = reverseGeolocate(latitude = data_set['GPSLatitude'], longitude = data_set['GPSLongitude'])
+            # get location from maps (google or openstreetmap)
+            maps_location = reverseGeolocate(latitude = data_set['GPSLatitude'], longitude = data_set['GPSLongitude'], map_type = map_type)
             # cache data with Lat/Long
-            data_cache[cache_key] = google_location
+            data_cache[cache_key] = maps_location
         else:
             # load location from cache
-            google_location = data_cache[cache_key]
+            maps_location = data_cache[cache_key]
             count['cache'] += 1
         # overwrite sets (note options check here)
         if args.debug:
-            print("### Google Location: {}".format(google_location))
+            print("### Map Location ({}): {}".format(map_type, maps_location))
         # must have at least the country set to write anything back
-        if google_location['Country']:
+        if maps_location['Country']:
             for loc in data_set_loc:
                 # only write to XMP if overwrite check passes
                 if checkOverwrite(data_set[loc], loc, args.field_controls):
-                    data_set[loc] = google_location[loc]
-                    xmp.set_property(xmp_fields[loc], loc, google_location[loc])
+                    data_set[loc] = maps_location[loc]
+                    xmp.set_property(xmp_fields[loc], loc, maps_location[loc])
                     write_file = True
             if write_file:
-                count['google'] += 1
+                count['map'] += 1
         else:
             print("(!) Could not geo loaction data ", end = '')
             failed = True
@@ -585,7 +687,7 @@ print("{}".format('=' * 37))
 print("XMP Files found             : {:7,}".format(count['all']))
 print("Updated                     : {:7,}".format(count['changed']))
 print("Skipped                     : {:7,}".format(count['skipped']))
-print("New GeoLocation Google      : {:7,}".format(count['google']))
+print("New GeoLocation from Map    : {:7,}".format(count['map']))
 print("GeoLocation from Cache      : {:7,}".format(count['cache']))
 print("Failed reverse GeoLocate    : {:7,}".format(count['failed']))
 if use_lightroom:
