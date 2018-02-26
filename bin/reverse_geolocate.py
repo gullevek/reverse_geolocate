@@ -1,5 +1,8 @@
 #!/opt/local/bin/python3
 
+# /opt is for MacPorts
+# /usr is for Brew
+
 # AUTHOR : Clemens Schwaighofer
 # DATE   : 2018/2/20
 # LICENSE: GPLv3
