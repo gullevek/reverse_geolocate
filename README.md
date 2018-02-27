@@ -19,8 +19,6 @@ pip3 install python-xmp-toolkit
 XMP Toolkit also needs the [Exempi Library](http://libopenraw.freedesktop.org/wiki/Exempi). This one can be install via brew or macports directly.
 See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthedocs.io/)
 
-The scripts python3 enviroment path (#!...) needs to be set so it points to a valid python3 install.
-
 ## Command line arguments
 
 reverse_geolocate.py [-h] -x

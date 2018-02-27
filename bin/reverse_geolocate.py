@@ -1,7 +1,4 @@
-#!/opt/local/bin/python3
-
-# /opt is for MacPorts
-# /usr is for Brew
+#!/usr/bin/env python3
 
 # AUTHOR : Clemens Schwaighofer
 # DATE   : 2018/2/20
