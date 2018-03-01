@@ -434,7 +434,19 @@ if not args.verbose:
     args.verbose = 0
 
 if args.debug:
-    print("### ARGUMENT VARS: X: {}, L: {}, F: {}, M: {}, G: {}, E: {}, N; {}, V: {}, D: {}, T: {}".format(args.xmp_sources, args.lightroom_folder, args.field_controls, args.use_openstreetmap, args.google_api_key, args.email, args.no_xmp_backup, args.verbose, args.debug, args.test))
+    print("### ARGUMENT VARS: X: {xmp}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
+        xmp = args.xmp_sources,
+        lr = args.lightroom_folder,
+        fc = args.field_controls,
+        osm = args.use_openstreetmap,
+        gp = args.google_api_key,
+        em = args.email,
+        nbk = args.no_xmp_backup,
+        wrc = args.config_write,
+        v = args.verbose,
+        d = args.debug,
+        t = args.test
+    ))
 
 # error flag
 error = False
