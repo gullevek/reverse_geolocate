@@ -655,7 +655,7 @@ for xmp_file in work_files:
         lrdb_row = cur.fetchone()
         # abort the read because we found more than one row
         if cur.fetchone() is not None:
-            print("(!) Lightroom DB returned one than more row")
+            print("(!) Lightroom DB returned more than one more row")
             lightroom_data_ok = False
             count['many_found'] += 1
         # Notify if we couldn't find one
