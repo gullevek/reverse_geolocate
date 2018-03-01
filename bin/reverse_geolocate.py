@@ -315,13 +315,13 @@ def checkOverwrite(data, key, field_controls):
     elif data and key.lower() in field_controls and 'overwrite' in field_controls:
         status = True
     if args.debug:
-        print("Data set: {}, Key: {}, Field Controls len: {}, Overwrite: {}, Key in Field Controls: {}, OVERWRITE: {}".format(
-            'YES' if data else 'NO',
-            key.lower(),
-            len(field_controls),
-            'OVERWRITE' if 'overwrite' in field_controls else 'NOT OVERWRITE',
-            'KEY OK' if key.lower() in field_controls else 'KEY NOT MATCHING',
-            status
+        print("Data set: {data_set}, Key: {key_lower}, Field Controls len: {field_count}, Overwrite: {overwrite_flag}, Key in Field Controls: {key_ok}, OVERWRITE: {do_overwrite}".format(
+            data_set = 'YES' if data else 'NO',
+            key_lower = key.lower(),
+            field_count = len(field_controls),
+            overwrite_flag = 'OVERWRITE' if 'overwrite' in field_controls else 'NOT OVERWRITE',
+            key_ok = 'KEY OK' if key.lower() in field_controls else 'KEY NOT MATCHING',
+            do_overwrite = status
         ))
     return status
 
