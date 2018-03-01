@@ -25,8 +25,8 @@ reverse_geolocate.py [-h] -x
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
     [-l LIGHTROOM FOLDER] [-s]
     [-f <overwrite, location, city, state, country, countrycode>]
-    [-g GOOGLE API KEY] [-o] [-e EMIL ADDRESS] [-n]
-    [-v] [--debug] [--test]
+    [-g GOOGLE API KEY] [-o] [-e EMIL ADDRESS] [-w]
+    [-n] [-v] [--debug] [--test]
 
 ### Arguments
 
@@ -40,6 +40,7 @@ Argument | Argument Value | Description
 -o, --openstreetmap | | Use OpenStreetMap instead of the default google maps
 -e, --email | email address | For OpenStreetMap with a large number of access
 -g, --google | Google Maps API Key | If available, to avoid the access limitations to the reverse location lookup
+-w, --write-settings | | Write the Google API key or the OpenStreetMap email into the settings file
 -v, --verbose | | More verbose output. Currently not used
 --debug | | Full detailed debug output. Will print out alot of data
 --test | | Does not write any changed back to the XMP sidecar file. For testing purposes
@@ -61,6 +62,18 @@ reverse_geolocate.py -x Photos/2017/01/Event-01/some_photo.xmp -f location
 ```
 
 Only works on *some_photo.xmp* file and will only set the *location* field if it is not yet set.
+
+### Config File
+
+The Google Maps API key and the OpenStreetMap Email address can be written to a config file with the -w argument. The config file is located in $HOME/.config/reverseGeolocate/reverse_geolocate.cfg in the following format
+
+```
+[API]
+googleapikey = <google api key>
+openstreetmapemail = <email>
+```
+
+if no -g or -e flag is given the keys are read from the config file. If the -g or -e parameter is given it will override the one found in the config file. A new parameter can be written to this config file with -w parameter.
 
 ### Google data priority
 

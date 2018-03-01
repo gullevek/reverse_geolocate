@@ -16,6 +16,7 @@ from libxmp import XMPMeta, XMPError, consts
 import sqlite3
 import requests
 from shutil import copyfile
+import configparser
 
 ##############################################################
 ### FUNCTIONS
@@ -396,6 +397,13 @@ parser.add_argument('-e', '--email',
     help = 'An email address for OpenStreetMap'
 )
 
+# write api/email settings to config file
+parser.add_argument('-w', '--write-seettings',
+    dest = 'config_write',
+    action = 'store_true',
+    help = 'Write Google API or OpenStreetMap email to config file'
+)
+
 # Do not create backup files
 parser.add_argument('-n', '--nobackup',
     dest = 'no_xmp_backup',
@@ -446,12 +454,50 @@ if args.email and not args.use_openstreetmap:
     error = True
 # if email and not basic valid email (@ .)
 if args.email:
-    if re.match('^.+@.+\..+$', args.email):
+    if not re.match('^.+@.+\.[A-Za-z]{1,}$', args.email):
         print("Not a valid email for OpenStreetMap: {}".format(args.email))
         error = True
 # on error exit here
 if error:
     sys.exit(1)
+
+config = configparser.ConfigParser()
+# try to find config file in following order
+# $HOME/.config/
+config_file = 'reverse_geolocate.cfg'
+config_folder = os.path.expanduser('~/.config/reverseGeolocate/')
+config_data = '{}{}'.format(config_folder, config_file)
+# if file exists read, if not skip unless we have write flag and google api or openstreetmaps email
+if os.path.isfile(config_data):
+    config.read(config_data)
+    # check if api group & setting is there. also never overwrite argument given data
+    if 'API' in config:
+        if 'googleapikey' in config['API']:
+            if not args.google_api_key:
+                args.google_api_key = config['API']['googleapikey']
+        if 'openstreetmapemail' in config['API']:
+            if not args.email:
+                args.email = config['API']['openstreetmapemail']
+# write data if exists and changed
+if args.config_write and (args.google_api_key or args.email):
+    config_change = False
+    # check if new value differs, if yes, change and write
+    if 'API' not in config:
+        config['API'] = {}
+    if args.google_api_key and ('googleapikey' not in config['API'] or config['API']['googleapikey'] != args.google_api_key):
+        config['API']['googleapikey'] = args.google_api_key
+        config_change = True
+    if args.email and ('openstreetmapemail' not in config['API'] or config['API']['openstreetmapemail'] != args.email):
+        config['API']['openstreetmapemail'] = args.email
+        config_change = True
+    if config_change:
+        # if we do not have the base folder create that first
+        if not os.path.exists(config_folder):
+            os.makedirs(config_folder)
+        with open(config_data, 'w') as fptr:
+            config.write(fptr)
+if args.debug:
+    print("### OVERRIDE API: G: {}, O: {}".format(args.google_api_key, args.email))
 
 # The XMP fields const lookup values
 # XML/XMP
