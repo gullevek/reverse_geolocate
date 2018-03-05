@@ -192,7 +192,7 @@ def reverseGeolocateGoogle(longitude, latitude):
     response = requests.get(url, params = payload)
     # debug output
     if args.debug:
-        print("Google search for Lat: {}, Long: {}".format(longitude, latitude))
+        print("Google search for Lat: {}, Long: {} with {}".format(longitude, latitude, response.url))
     if args.debug and args.verbose >= 1:
         print("Google response: {} => JSON: {}".format(response, response.json()))
     # print("Error: {}".format(response.json()['status']))
@@ -200,7 +200,7 @@ def reverseGeolocateGoogle(longitude, latitude):
         # first entry for type = premise
         for entry in response.json()['results']:
             for sub_entry in entry:
-                if sub_entry == 'types' and 'premise' in entry[sub_entry]:
+                if sub_entry == 'types' and ('premise' in entry[sub_entry] or 'street_address' in entry[sub_entry] or 'sublocality' in entry[sub_entry]):
                     # print("Entry {}: {}".format(sub_entry, entry[sub_entry]))
                     # print("Address {}".format(entry['address_components']))
                     # type
@@ -218,20 +218,20 @@ def reverseGeolocateGoogle(longitude, latitude):
                                 geolocation['CountryCode'] = addr['short_name']
                                 geolocation['Country'] = addr['long_name']
                             # state
-                            if index == 'administrative_area_level_1' and index  in addr['types'] and not geolocation['State']:
+                            if index == 'administrative_area_level_1' and index in addr['types'] and not geolocation['State']:
                                 geolocation['State'] = addr['long_name']
-                            if index == 'administrative_area_level_2' and index  in addr['types'] and not geolocation['State']:
+                            if index == 'administrative_area_level_2' and index in addr['types'] and not geolocation['State']:
                                 geolocation['State'] = addr['long_name']
                             # city
-                            if index == 'locality' and index  in addr['types'] and not geolocation['City']:
+                            if index == 'locality' and index in addr['types'] and not geolocation['City']:
                                 geolocation['City'] = addr['long_name']
                             # location
-                            if index == 'sublocality_level_1' and index  in addr['types'] and not geolocation['Location']:
+                            if index == 'sublocality_level_1' and index in addr['types'] and not geolocation['Location']:
                                 geolocation['Location'] = addr['long_name']
-                            if index == 'sublocality_level_2' and index  in addr['types'] and not geolocation['Location']:
+                            if index == 'sublocality_level_2' and index in addr['types'] and not geolocation['Location']:
                                 geolocation['Location'] = addr['long_name']
                             # if all failes try route
-                            if index == 'route' and index  in addr['types'] and not geolocation['Location']:
+                            if index == 'route' and index in addr['types'] and not geolocation['Location']:
                                 geolocation['Location'] = addr['long_name']
         # write OK status
         geolocation['status'] = response.json()['status']
@@ -335,6 +335,8 @@ def checkOverwrite(data, key, field_controls):
 def shortenPath(path, length = 30):
     length = length - 3;
     if len(path) > length:
+        # print("PA: {}/{}".format(sum([2 if is_asian(x) else 1 for x in path]), len(path)))
+        # path = "{} {}".format("..", path[sum([2 if is_asian(x) else 1 for x in path]) - length:])
         path = "{} {}".format("..", path[len(path) - length:])
     return path;
 
@@ -348,6 +350,14 @@ def printHeader(header, lines = 0, header_line = 0):
         print("{}".format(header))
     lines += 1
     return lines
+
+IDEOGRAPHIC_SPACE = 0x3000
+def is_asian(char):
+    """Is the character Asian?"""
+
+    # 0x3000 is ideographic space (i.e. double-byte space)
+    # Anything over is an Asian character
+    return ord(char) > IDEOGRAPHIC_SPACE
 
 ##############################################################
 ### ARGUMENT PARSNING
@@ -653,7 +663,8 @@ for xmp_file_source in args.xmp_sources:
         # or glob glob all .xmp files + directory
         for root, dirs, files in os.walk(xmp_file_source):
             for file in files:
-                if file.endswith(".xmp"):
+                # but has no .BK. inside
+                if file.endswith(".xmp") and ".BK." not in file:
                     if "{}/{}".format(root, file) not in work_files:
                         work_files.append("{}/{}".format(root, file))
                         count['all'] += 1
@@ -831,7 +842,7 @@ for xmp_file in work_files:
             if maps_location['Country']:
                 for loc in data_set_loc:
                     # only write to XMP if overwrite check passes
-                    if checkOverwrite(data_set[loc], loc, args.field_controls):
+                    if checkOverwrite(data_set_original[loc], loc, args.field_controls):
                         data_set[loc] = maps_location[loc]
                         xmp.set_property(xmp_fields[loc], loc, maps_location[loc])
                         write_file = True
@@ -857,6 +868,7 @@ for xmp_file in work_files:
         if write_file:
             if not args.test:
                 # use copyfile to create a backup copy
+                # TODO: do add a number after BK +1 for each new one
                 if not args.no_xmp_backup:
                     copyfile(xmp_file, "{}.BK{}".format(os.path.splitext(xmp_file)[0], os.path.splitext(xmp_file)[1]))
                 # write back to riginal file
