@@ -339,18 +339,13 @@ def shortenPath(path, length = 30):
     return path;
 
 # METHOD: printHeader
-# PARAMS: header string, header seperator, line counter, print header counter trigger
+# PARAMS: header string, line counter, print header counter trigger
 # RETURN: line counter +1
 # DESC  : prints header line and header seperator line
-def printHeader(header, header_seperator, lines = 0, header_line = 0):
+def printHeader(header, lines = 0, header_line = 0):
     if lines == header_line:
-        # blank line, might be used for page numbers, or other info
-        print("{}".format(''))
         # print header
         print("{}".format(header))
-        # print line with length of header string
-        # print("{}".format('-' * len(header)))
-        print("{}".format(header_seperator))
     lines += 1
     return lines
 
@@ -672,7 +667,7 @@ if args.debug:
 # if we have read only we print list format style
 if args.read_only:
     # various string lengths
-    format_length ={
+    format_length = {
         'filename': 40,
         'latitude': 18,
         'longitude': 18,
@@ -695,30 +690,37 @@ if args.read_only:
         format_length['city'],
         format_length['location']
     )
-    # header line
-    header = format_line.format(
-        filename = "File",
-        latitude = "Latitude",
-        longitude = "Longitude",
-        code = 'Code',
-        country = 'Country',
-        state = 'State',
-        city = 'City',
-        location = 'Location'
-    )
-    # header seperator line
-    header_seperator = "{}+{}+{}+{}+{}+{}+{}+{}".format(
-        '-' * (format_length['filename'] + 2),
-        '-' * (format_length['latitude'] + 2),
-        '-' * (format_length['longitude'] + 2),
-        '-' * (format_length['code'] + 2),
-        '-' * (format_length['country'] + 2),
-        '-' * (format_length['state'] + 2),
-        '-' * (format_length['city'] + 2),
-        '-' * (format_length['location'] + 2)
+    # header line format:
+    # blank line
+    # header title
+    # seperator line
+    header_line = '''{}
+{}
+{}'''.format(
+        '', # can later be set to something else, eg page numbers
+        format_line.format( # the header title line
+            filename = "File",
+            latitude = "Latitude",
+            longitude = "Longitude",
+            code = 'Code',
+            country = 'Country',
+            state = 'State',
+            city = 'City',
+            location = 'Location'
+        ),
+        "{}+{}+{}+{}+{}+{}+{}+{}".format( # the header seperator line
+            '-' * (format_length['filename'] + 2),
+            '-' * (format_length['latitude'] + 2),
+            '-' * (format_length['longitude'] + 2),
+            '-' * (format_length['code'] + 2),
+            '-' * (format_length['country'] + 2),
+            '-' * (format_length['state'] + 2),
+            '-' * (format_length['city'] + 2),
+            '-' * (format_length['location'] + 2)
+        )
     )
     # print header
-    printHeader(header, header_seperator)
+    printHeader(header_line)
 # now we just loop through each file and work on them
 for xmp_file in work_files:
     if not args.read_only:
@@ -767,7 +769,7 @@ for xmp_file in work_files:
     if args.read_only:
         # for read only we print out the data formatted
         # headline check, do we need to print that
-        count['read'] = printHeader(header, header_seperator, count['read'], header_repeat)
+        count['read'] = printHeader(header_line, count['read'], header_repeat)
         # the data content
         print(format_line.format(
             filename = shortenPath(xmp_file, format_length['filename']), # shorten from the left
