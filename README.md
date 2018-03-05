@@ -26,7 +26,7 @@ reverse_geolocate.py [-h] -x
     [-l LIGHTROOM FOLDER] [-s]
     [-f <overwrite, location, city, state, country, countrycode>]
     [-g GOOGLE API KEY] [-o] [-e EMIL ADDRESS] [-w]
-    [-n] [-v] [--debug] [--test]
+    [-r] [-n] [-v] [--debug] [--test]
 
 ### Arguments
 
@@ -40,6 +40,7 @@ Argument | Argument Value | Description
 -o, --openstreetmap | | Use OpenStreetMap instead of the default google maps
 -e, --email | email address | For OpenStreetMap with a large number of access
 -g, --google | Google Maps API Key | If available, to avoid the access limitations to the reverse location lookup
+-r, --read-only | | Read only data from the XMP files and print them out. No LR DB connection is done or any map lookups
 -w, --write-settings | | Write the Google API key or the OpenStreetMap email into the settings file
 -v, --verbose | | More verbose output. Currently not used
 --debug | | Full detailed debug output. Will print out alot of data

@@ -9,14 +9,11 @@
 #          * all data is translated into English with long vowl system (aka ou or oo is ō)
 # MUST HAVE: Python XMP Toolkit (http://python-xmp-toolkit.readthedocs.io/)
 
-import argparse
+import argparse, sqlite3, requests, configparser, textwrap
 import os, sys, re
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, XMPError, consts
-import sqlite3
-import requests
 from shutil import copyfile
-import configparser
 
 ##############################################################
 ### FUNCTIONS
@@ -293,6 +290,12 @@ def longLatReg(longitude, latitude):
                 lat_long[element] *= -1
     return lat_long
 
+# wrapper calls for DMS to Lat/Long
+def convertDMStoLat(lat_long):
+    return longLatReg('0,0.0N', lat_long)['latitude']
+def convertDMStoLong(lat_long):
+    return longLatReg(lat_long, '0,0.0N')['longitude']
+
 # METHOD: checkOverwrite
 # PARAMS: data: value field, key: XMP key, field_controls: array from args
 # RETURN: true/false
@@ -324,6 +327,32 @@ def checkOverwrite(data, key, field_controls):
             do_overwrite = status
         ))
     return status
+
+# METHOD: shortenPath
+# PARAMS: path = string, length = int
+# RETURN: shortend path with ... in front
+# DESC  : shortes a path from the left so it fits into lenght
+def shortenPath(path, length = 30):
+    length = length - 3;
+    if len(path) > length:
+        path = "{} {}".format("..", path[len(path) - length:])
+    return path;
+
+# METHOD: printHeader
+# PARAMS: header string, header seperator, line counter, print header counter trigger
+# RETURN: line counter +1
+# DESC  : prints header line and header seperator line
+def printHeader(header, header_seperator, lines = 0, header_line = 0):
+    if lines == header_line:
+        # blank line, might be used for page numbers, or other info
+        print("{}".format(''))
+        # print header
+        print("{}".format(header))
+        # print line with length of header string
+        # print("{}".format('-' * len(header)))
+        print("{}".format(header_seperator))
+    lines += 1
+    return lines
 
 ##############################################################
 ### ARGUMENT PARSNING
@@ -398,10 +427,17 @@ parser.add_argument('-e', '--email',
 )
 
 # write api/email settings to config file
-parser.add_argument('-w', '--write-seettings',
+parser.add_argument('-w', '--write-settings',
     dest = 'config_write',
     action = 'store_true',
     help = 'Write Google API or OpenStreetMap email to config file'
+)
+
+# only read data and print on screen, do not write anything
+parser.add_argument('-r', '--read-only',
+    dest = 'read_only',
+    action = 'store_true',
+    help = 'Read current values from the XMP file only, do not read from LR or lookup any data and write back'
 )
 
 # Do not create backup files
@@ -559,6 +595,7 @@ cur = ''
 # count variables
 count = {
     'all': 0,
+    'read': 0,
     'map': 0,
     'cache': 0,
     'lightroom': 0,
@@ -632,15 +669,57 @@ for xmp_file_source in args.xmp_sources:
 
 if args.debug:
     print("### Work Files {}".format(work_files))
+# if we have read only we print list format style
+if args.read_only:
+    # various string lengths
+    format_length ={
+        'filename': 40,
+        'latitude': 18,
+        'longitude': 18,
+        'code': 4,
+        'country': 20,
+        'state': 20,
+        'city': 25,
+        'location': 30
+    }
+    # after how many lines do we reprint the header
+    header_repeat = 40;
+    # the formatted line for the output
+    format_line = " {filename:<" + str(format_length['filename']) + "} | {latitude:>" + str(format_length['latitude']) + "} | {longitude:>" + str(format_length['longitude']) + "} | {code:<" + str(format_length['code']) + "} | {country:<" + str(format_length['country']) + "} | {state:<" + str(format_length['state']) + "} | {city:<" + str(format_length['city']) + "} | {location:<" + str(format_length['location']) + "} "
+    # header line
+    header = format_line.format(
+        filename = "File",
+        latitude = "Latitude",
+        longitude = "Longitude",
+        code = 'Code',
+        country = 'Country',
+        state = 'State',
+        city = 'City',
+        location = 'Location'
+    )
+    # header seperator line
+    header_seperator = "{}+{}+{}+{}+{}+{}+{}+{}".format(
+        '-' * (format_length['filename'] + 2),
+        '-' * (format_length['latitude'] + 2),
+        '-' * (format_length['longitude'] + 2),
+        '-' * (format_length['code'] + 2),
+        '-' * (format_length['country'] + 2),
+        '-' * (format_length['state'] + 2),
+        '-' * (format_length['city'] + 2),
+        '-' * (format_length['location'] + 2)
+    )
+    # print header
+    printHeader(header, header_seperator)
 # now we just loop through each file and work on them
 for xmp_file in work_files:
-    print("---> {}: ".format(xmp_file), end = '')
+    if not args.read_only:
+        print("---> {}: ".format(xmp_file), end = '')
     #### ACTION FLAGs
     write_file = False
     lightroom_data_ok = True
     #### LIGHTROOM DB READING
     # read in data from DB if we uave lightroom folder
-    if use_lightroom:
+    if use_lightroom and not args.read_only:
         # get the base file name, we need this for lightroom
         xmp_file_basename = os.path.splitext(os.path.split(xmp_file)[1])[0]
         # for strict check we need to get the full path, and add / as the LR stores the last folder with /
@@ -676,119 +755,136 @@ for xmp_file in work_files:
         data_set[xmp_field] = xmp.get_property(xmp_fields[xmp_field], xmp_field)
         if args.debug:
             print("### => XMP: {}:{} => {}".format(xmp_fields[xmp_field], xmp_field, data_set[xmp_field]))
-    # create a duplicate copy for later checking if something changed
-    data_set_original = data_set.copy()
-
-    # check if LR exists and use this to compare to XMP data
-    # is LR GPS and no XMP GPS => use LR and set XMP
-    # same for location names
-    # if missing in XMP but in LR -> set in XMP
-    # if missing in both do lookup in Maps
-    if use_lightroom and lightroom_data_ok:
-        # check lat/long separate
-        if lrdb_row['gpsLatitude'] and not data_set['GPSLatitude']:
-            # we need to convert to the Degree,Min.sec[NSEW] format
-            data_set['GPSLatitude'] = convertLatToDMS(lrdb_row['gpsLatitude'])
-        if lrdb_row['gpsLongitude'] and not data_set['GPSLongitude']:
-            data_set['GPSLongitude'] = convertLongToDMS(lrdb_row['gpsLongitude'])
-        # now check Location, City, etc
-        for loc in data_set_loc:
-            # overwrite original set (read from XMP) with LR data if original data is missing
-            if lrdb_row[loc] and not data_set[loc]:
-                data_set[loc] = lrdb_row[loc]
-                if args.debug:
-                    print("### -> LR: {} => {}".format(loc, lrdb_row[loc]))
-    # base set done, now check if there is anything unset in the data_set, if yes do a lookup in maps
-    # run this through the overwrite checker to get unset if we have a forced overwrite
-    has_unset = False
-    failed = False
-    for loc in data_set_loc:
-        if checkOverwrite(data_set[loc], loc, args.field_controls):
-            has_unset = True
-    if has_unset:
-        # check if lat/long is in cache
-        cache_key = '{}.#.{}'.format(data_set['GPSLatitude'], data_set['GPSLongitude'])
-        if args.debug:
-            print("### *** CACHE: {}: {}".format(cache_key, 'NO' if cache_key not in data_cache else 'YES'))
-        if cache_key not in data_cache:
-            # get location from maps (google or openstreetmap)
-            maps_location = reverseGeolocate(latitude = data_set['GPSLatitude'], longitude = data_set['GPSLongitude'], map_type = map_type)
-            # cache data with Lat/Long
-            data_cache[cache_key] = maps_location
-        else:
-            # load location from cache
-            maps_location = data_cache[cache_key]
-            count['cache'] += 1
-        # overwrite sets (note options check here)
-        if args.debug:
-            print("### Map Location ({}): {}".format(map_type, maps_location))
-        # must have at least the country set to write anything back
-        if maps_location['Country']:
-            for loc in data_set_loc:
-                # only write to XMP if overwrite check passes
-                if checkOverwrite(data_set[loc], loc, args.field_controls):
-                    data_set[loc] = maps_location[loc]
-                    xmp.set_property(xmp_fields[loc], loc, maps_location[loc])
-                    write_file = True
-            if write_file:
-                count['map'] += 1
-        else:
-            print("(!) Could not geo loaction data ", end = '')
-            failed = True
+    if args.read_only:
+        # for read only we print out the data formatted
+        # headline check, do we need to print that
+        count['read'] = printHeader(header, header_seperator, count['read'], header_repeat)
+        # the data content
+        print(format_line.format(
+            filename = shortenPath(xmp_file, format_length['filename']), # shorten from the left
+            latitude = str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']], # cut off from the right
+            longitude = str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
+            code = data_set['CountryCode'][:2].center(4), # is only 2 chars
+            country = textwrap.shorten(data_set['Country'], width = format_length['country'], placeholder = '..'), # shorten from the right
+            state = textwrap.shorten(data_set['State'], width = format_length['state'], placeholder = '..'),
+            city = textwrap.shorten(data_set['City'], width = format_length['city'], placeholder = '..'),
+            location = textwrap.shorten(data_set['Location'], width = format_length['location'], placeholder = '..')
+        ))
     else:
-        if args.debug:
-            print("Lightroom data use: {}, Lightroom data ok: {}".format(use_lightroom, lightroom_data_ok))
-        # check if the data_set differs from the original (LR db load)
-        # if yes write, else skip
+        # create a duplicate copy for later checking if something changed
+        data_set_original = data_set.copy()
+        # check if LR exists and use this to compare to XMP data
+        # is LR GPS and no XMP GPS => use LR and set XMP
+        # same for location names
+        # if missing in XMP but in LR -> set in XMP
+        # if missing in both do lookup in Maps
         if use_lightroom and lightroom_data_ok:
-            for key in data_set:
-                # if not the same (to original data) and passes overwrite check
-                if data_set[key] != data_set_original[key] and checkOverwrite(data_set_original[key], key, args.field_controls):
-                    xmp.set_property(xmp_fields[key], key, data_set[key])
-                    write_file = True;
-            if write_file:
-                count['lightroom'] += 1
-    # if we have the write flag set, write data
-    if write_file:
-        if not args.test:
-            # use copyfile to create a backup copy
-            if not args.no_xmp_backup:
-                copyfile(xmp_file, "{}.BK{}".format(os.path.splitext(xmp_file)[0], os.path.splitext(xmp_file)[1]))
-            # write back to riginal file
-            with open(xmp_file, 'w') as fptr:
-                fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
+            # check lat/long separate
+            if lrdb_row['gpsLatitude'] and not data_set['GPSLatitude']:
+                # we need to convert to the Degree,Min.sec[NSEW] format
+                data_set['GPSLatitude'] = convertLatToDMS(lrdb_row['gpsLatitude'])
+            if lrdb_row['gpsLongitude'] and not data_set['GPSLongitude']:
+                data_set['GPSLongitude'] = convertLongToDMS(lrdb_row['gpsLongitude'])
+            # now check Location, City, etc
+            for loc in data_set_loc:
+                # overwrite original set (read from XMP) with LR data if original data is missing
+                if lrdb_row[loc] and not data_set[loc]:
+                    data_set[loc] = lrdb_row[loc]
+                    if args.debug:
+                        print("### -> LR: {} => {}".format(loc, lrdb_row[loc]))
+        # base set done, now check if there is anything unset in the data_set, if yes do a lookup in maps
+        # run this through the overwrite checker to get unset if we have a forced overwrite
+        has_unset = False
+        failed = False
+        for loc in data_set_loc:
+            if checkOverwrite(data_set[loc], loc, args.field_controls):
+                has_unset = True
+        if has_unset:
+            # check if lat/long is in cache
+            cache_key = '{}.#.{}'.format(data_set['GPSLatitude'], data_set['GPSLongitude'])
+            if args.debug:
+                print("### *** CACHE: {}: {}".format(cache_key, 'NO' if cache_key not in data_cache else 'YES'))
+            if cache_key not in data_cache:
+                # get location from maps (google or openstreetmap)
+                maps_location = reverseGeolocate(latitude = data_set['GPSLatitude'], longitude = data_set['GPSLongitude'], map_type = map_type)
+                # cache data with Lat/Long
+                data_cache[cache_key] = maps_location
+            else:
+                # load location from cache
+                maps_location = data_cache[cache_key]
+                count['cache'] += 1
+            # overwrite sets (note options check here)
+            if args.debug:
+                print("### Map Location ({}): {}".format(map_type, maps_location))
+            # must have at least the country set to write anything back
+            if maps_location['Country']:
+                for loc in data_set_loc:
+                    # only write to XMP if overwrite check passes
+                    if checkOverwrite(data_set[loc], loc, args.field_controls):
+                        data_set[loc] = maps_location[loc]
+                        xmp.set_property(xmp_fields[loc], loc, maps_location[loc])
+                        write_file = True
+                if write_file:
+                    count['map'] += 1
+            else:
+                print("(!) Could not geo loaction data ", end = '')
+                failed = True
         else:
-            print("[TEST] Would write {} ".format(data_set, xmp_file), end = '')
-        print("[UPDATED]")
-        count['changed'] += 1
-    elif failed:
-        print("[FAILED]")
-        count['failed'] += 1
-        # log data to array for post print
-        failed_files.append(xmp_file)
-    else:
-        print("[SKIP]")
-        count['skipped'] += 1
+            if args.debug:
+                print("Lightroom data use: {}, Lightroom data ok: {}".format(use_lightroom, lightroom_data_ok))
+            # check if the data_set differs from the original (LR db load)
+            # if yes write, else skip
+            if use_lightroom and lightroom_data_ok:
+                for key in data_set:
+                    # if not the same (to original data) and passes overwrite check
+                    if data_set[key] != data_set_original[key] and checkOverwrite(data_set_original[key], key, args.field_controls):
+                        xmp.set_property(xmp_fields[key], key, data_set[key])
+                        write_file = True;
+                if write_file:
+                    count['lightroom'] += 1
+        # if we have the write flag set, write data
+        if write_file:
+            if not args.test:
+                # use copyfile to create a backup copy
+                if not args.no_xmp_backup:
+                    copyfile(xmp_file, "{}.BK{}".format(os.path.splitext(xmp_file)[0], os.path.splitext(xmp_file)[1]))
+                # write back to riginal file
+                with open(xmp_file, 'w') as fptr:
+                    fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
+            else:
+                print("[TEST] Would write {} ".format(data_set, xmp_file), end = '')
+            print("[UPDATED]")
+            count['changed'] += 1
+        elif failed:
+            print("[FAILED]")
+            count['failed'] += 1
+            # log data to array for post print
+            failed_files.append(xmp_file)
+        else:
+            print("[SKIP]")
+            count['skipped'] += 1
 
 # close DB connection
-lrdb.close()
-
-# end stats
-print("{}".format('=' * 37))
-print("XMP Files found             : {:7,}".format(count['all']))
-print("Updated                     : {:7,}".format(count['changed']))
-print("Skipped                     : {:7,}".format(count['skipped']))
-print("New GeoLocation from Map    : {:7,}".format(count['map']))
-print("GeoLocation from Cache      : {:7,}".format(count['cache']))
-print("Failed reverse GeoLocate    : {:7,}".format(count['failed']))
 if use_lightroom:
-    print("GeoLocaction from Lightroom : {:7,}".format(count['lightroom']))
-    print("No Lightroom data found     : {:7,}".format(count['not_found']))
-    print("More than one found in LR   : {:7,}".format(count['many_found']))
-# if we have failed data
-if len(failed_files) > 0:
-    print("{}".format('-' * 37))
-    print("Files that failed to update:")
-    print("{}".format(', '.join(failed_files)))
+    lrdb.close()
+
+# end stats only if we write
+print("{}".format('=' * 39))
+print("XMP Files found             : {:9,}".format(count['all']))
+if not args.read_only:
+    print("Updated                     : {:9,}".format(count['changed']))
+    print("Skipped                     : {:9,}".format(count['skipped']))
+    print("New GeoLocation from Map    : {:9,}".format(count['map']))
+    print("GeoLocation from Cache      : {:9,}".format(count['cache']))
+    print("Failed reverse GeoLocate    : {:9,}".format(count['failed']))
+    if use_lightroom:
+        print("GeoLocaction from Lightroom : {:9,}".format(count['lightroom']))
+        print("No Lightroom data found     : {:9,}".format(count['not_found']))
+        print("More than one found in LR   : {:9,}".format(count['many_found']))
+    # if we have failed data
+    if len(failed_files) > 0:
+        print("{}".format('-' * 39))
+        print("Files that failed to update:")
+        print("{}".format(', '.join(failed_files)))
 
 # __END__
