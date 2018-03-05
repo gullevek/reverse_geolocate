@@ -685,7 +685,16 @@ if args.read_only:
     # after how many lines do we reprint the header
     header_repeat = 40;
     # the formatted line for the output
-    format_line = " {filename:<" + str(format_length['filename']) + "} | {latitude:>" + str(format_length['latitude']) + "} | {longitude:>" + str(format_length['longitude']) + "} | {code:<" + str(format_length['code']) + "} | {country:<" + str(format_length['country']) + "} | {state:<" + str(format_length['state']) + "} | {city:<" + str(format_length['city']) + "} | {location:<" + str(format_length['location']) + "} "
+    format_line = " {{filename:<{}}} | {{latitude:>{}}} | {{longitude:>{}}} | {{code:<{}}} | {{country:<{}}} | {{state:<{}}} | {{city:<{}}} | {{location:<{}}} ".format(
+        format_length['filename'],
+        format_length['latitude'],
+        format_length['longitude'],
+        format_length['code'],
+        format_length['country'],
+        format_length['state'],
+        format_length['city'],
+        format_length['location']
+    )
     # header line
     header = format_line.format(
         filename = "File",
