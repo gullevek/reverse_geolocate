@@ -884,7 +884,7 @@ for xmp_file in work_files:
                     bk_file_counter = 1
                     # get PATH from file and look for .BK. data in this folder matching, output is sorted per BK counter key
                     for bk_file in sorted(
-                            glob.glob("{path}}/{file}*.xmp".format(
+                            glob.glob("{path}/{file}*.xmp".format(
                                 path = os.path.split(xmp_file)[0],
                                 file = "{}.BK.".format(os.path.splitext(os.path.split(xmp_file)[1])[0])
                                 )
