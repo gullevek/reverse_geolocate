@@ -667,7 +667,7 @@ for xmp_file_source in args.xmp_sources:
         # if there are folders, dive into them
         # or glob glob all .xmp files + directory
         for root, dirs, files in os.walk(xmp_file_source):
-            for file in files:
+            for file in sorted(files):
                 # but has no .BK. inside
                 if file.endswith(".xmp") and ".BK." not in file:
                     if "{}/{}".format(root, file) not in work_files:
