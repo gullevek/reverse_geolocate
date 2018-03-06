@@ -329,14 +329,18 @@ def checkOverwrite(data, key, field_controls):
     return status
 
 # METHOD: shortenPath
-# PARAMS: path = string, length = int
+# PARAMS: path = string, length = int, file_only = true/false, path_only = true/false
 # RETURN: shortend path with ... in front
 # DESC  : shortes a path from the left so it fits into lenght
-def shortenPath(path, length = 30):
+#         if file only is set to true, it will split the file, if path only is set, only the path
+def shortenPath(path, length = 30, file_only = False, path_only = False):
     length = length - 3;
     # I assume the XMP file name has no CJK characters inside, so I strip out the path
     # The reason is that if there are CJK characters inside it will screw up the formatting
-    path = os.path.split(path)[1]
+    if file_only:
+        path = os.path.split(path)[1]
+    if path_only:
+        path = os.path.split(path)[0]
     if len(path) > length:
         path = "{} {}".format("..", path[len(path) - length:])
     return path;
@@ -680,19 +684,20 @@ if args.debug:
 if args.read_only:
     # various string lengths
     format_length = {
-        'filename': 40,
+        'filename': 35,
         'latitude': 18,
         'longitude': 18,
         'code': 4,
-        'country': 20,
-        'state': 20,
-        'city': 25,
-        'location': 30
+        'country': 15,
+        'state': 18,
+        'city': 20,
+        'location': 25,
+        'path': 30,
     }
     # after how many lines do we reprint the header
     header_repeat = 40;
     # the formatted line for the output
-    format_line = " {{filename:<{}}} | {{latitude:>{}}} | {{longitude:>{}}} | {{code:<{}}} | {{country:<{}}} | {{state:<{}}} | {{city:<{}}} | {{location:<{}}} ".format(
+    format_line = " {{filename:<{}}} | {{latitude:>{}}} | {{longitude:>{}}} | {{code:<{}}} | {{country:<{}}} | {{state:<{}}} | {{city:<{}}} | {{location:<{}}} | {{path:<{}}}".format(
         format_length['filename'],
         format_length['latitude'],
         format_length['longitude'],
@@ -700,7 +705,8 @@ if args.read_only:
         format_length['country'],
         format_length['state'],
         format_length['city'],
-        format_length['location']
+        format_length['location'],
+        format_length['path']
     )
     # header line format:
     # blank line
@@ -711,16 +717,17 @@ if args.read_only:
 {}'''.format(
         '', # can later be set to something else, eg page numbers
         format_line.format( # the header title line
-            filename = "File",
-            latitude = "Latitude",
-            longitude = "Longitude",
+            filename = 'File',
+            latitude = 'Latitude',
+            longitude = 'Longitude',
             code = 'Code',
             country = 'Country',
             state = 'State',
             city = 'City',
-            location = 'Location'
+            location = 'Location',
+            path = 'Path'
         ),
-        "{}+{}+{}+{}+{}+{}+{}+{}".format( # the header seperator line
+        "{}+{}+{}+{}+{}+{}+{}+{}+{}".format( # the header seperator line
             '-' * (format_length['filename'] + 2),
             '-' * (format_length['latitude'] + 2),
             '-' * (format_length['longitude'] + 2),
@@ -728,7 +735,8 @@ if args.read_only:
             '-' * (format_length['country'] + 2),
             '-' * (format_length['state'] + 2),
             '-' * (format_length['city'] + 2),
-            '-' * (format_length['location'] + 2)
+            '-' * (format_length['location'] + 2),
+            '-' * (format_length['path'] + 2)
         )
     )
     # print header
@@ -784,14 +792,15 @@ for xmp_file in work_files:
         count['read'] = printHeader(header_line, count['read'], header_repeat)
         # the data content
         print(format_line.format(
-            filename = shortenPath(xmp_file, format_length['filename']), # shorten from the left
+            filename = shortenPath(xmp_file, format_length['filename'], file_only = True), # shorten from the left
             latitude = str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']], # cut off from the right
             longitude = str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
             code = data_set['CountryCode'][:2].center(4), # is only 2 chars
             country = textwrap.shorten(data_set['Country'], width = format_length['country'], placeholder = '..'), # shorten from the right
             state = textwrap.shorten(data_set['State'], width = format_length['state'], placeholder = '..'),
             city = textwrap.shorten(data_set['City'], width = format_length['city'], placeholder = '..'),
-            location = textwrap.shorten(data_set['Location'], width = format_length['location'], placeholder = '..')
+            location = textwrap.shorten(data_set['Location'], width = format_length['location'], placeholder = '..'),
+            path = shortenPath(xmp_file, format_length['path'], path_only = True)
         ))
     else:
         # create a duplicate copy for later checking if something changed
