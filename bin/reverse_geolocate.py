@@ -10,7 +10,7 @@
 # MUST HAVE: Python XMP Toolkit (http://python-xmp-toolkit.readthedocs.io/)
 
 import argparse, sqlite3, requests, configparser, textwrap
-import os, sys, re
+import glob, os, sys, re
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, XMPError, consts
 from shutil import copyfile
@@ -334,9 +334,10 @@ def checkOverwrite(data, key, field_controls):
 # DESC  : shortes a path from the left so it fits into lenght
 def shortenPath(path, length = 30):
     length = length - 3;
+    # I assume the XMP file name has no CJK characters inside, so I strip out the path
+    # The reason is that if there are CJK characters inside it will screw up the formatting
+    path = os.path.split(path)[1]
     if len(path) > length:
-        # print("PA: {}/{}".format(sum([2 if is_asian(x) else 1 for x in path]), len(path)))
-        # path = "{} {}".format("..", path[sum([2 if is_asian(x) else 1 for x in path]) - length:])
         path = "{} {}".format("..", path[len(path) - length:])
     return path;
 
@@ -351,13 +352,13 @@ def printHeader(header, lines = 0, header_line = 0):
     lines += 1
     return lines
 
-IDEOGRAPHIC_SPACE = 0x3000
-def is_asian(char):
-    """Is the character Asian?"""
-
-    # 0x3000 is ideographic space (i.e. double-byte space)
-    # Anything over is an Asian character
-    return ord(char) > IDEOGRAPHIC_SPACE
+# METHOD: fileSortNumber
+# PARAMS: file name
+# RETURN: number found in the BK string or 0 for none
+# DESC  : gets the BK number for sorting in the file list
+def fileSortNumber(file):
+    m = re.match('.*\.BK\.(\d+)\.xmp$', file)
+    return int(m.group(1)) if m is not None else 0
 
 ##############################################################
 ### ARGUMENT PARSNING
@@ -868,9 +869,31 @@ for xmp_file in work_files:
         if write_file:
             if not args.test:
                 # use copyfile to create a backup copy
-                # TODO: do add a number after BK +1 for each new one
                 if not args.no_xmp_backup:
-                    copyfile(xmp_file, "{}.BK{}".format(os.path.splitext(xmp_file)[0], os.path.splitext(xmp_file)[1]))
+                    # check if there is another file with .BK. already there, if yes, get the max number and +1 it, if not set to 1
+                    # set to 1 for if we have no backups yet
+                    bk_file_counter = 1
+                    # get PATH from file and look for .BK. data in this folder matching, output is sorted per BK counter key
+                    for bk_file in sorted(
+                            glob.glob("{path}}/{file}*.xmp".format(
+                                path = os.path.split(xmp_file)[0],
+                                file = "{}.BK.".format(os.path.splitext(os.path.split(xmp_file)[1])[0])
+                                )
+                            ),
+                            key = lambda pos: fileSortNumber(pos),
+                            reverse = True
+                        ):
+                        # BK.1, etc -> get the number
+                        bk_pos = fileSortNumber(bk_file)
+                        if bk_pos > 0:
+                            if args.debug:
+                                print("#### **** File: {}, Counter: {} -> {}".format(bk_file, bk_pos, bk_pos + 1))
+                            # check if found + 1 is bigger than set, if yes, set to new bk counter
+                            if bk_pos + 1 > bk_file_counter:
+                                bk_file_counter = bk_pos + 1
+                                break
+                    # copy to new backup file
+                    copyfile(xmp_file, "{}.BK.{}{}".format(os.path.splitext(xmp_file)[0], bk_file_counter, os.path.splitext(xmp_file)[1]))
                 # write back to riginal file
                 with open(xmp_file, 'w') as fptr:
                     fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
