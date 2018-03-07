@@ -346,6 +346,17 @@ def shortenPath(path, length = 30, file_only = False, path_only = False):
         path = "{} {}".format("..", path[len(path) - length:])
     return path;
 
+# METHOD: shortenString
+# PARAMS: string, shorten width, override shorten placeholder
+# RETURN: shortened string
+# DESC  : shortens a string to width and attached placeholder
+def shortenString(string, width, placeholder = '..'):
+    if len(str(string)) > width:
+        width -= len(placeholder)
+        return "{}{}".format(str(string)[:width], placeholder)
+    else:
+        return str(string)
+
 # METHOD: printHeader
 # PARAMS: header string, line counter, print header counter trigger
 # RETURN: line counter +1
@@ -463,6 +474,20 @@ parser.add_argument('-r', '--read-only',
     help = 'Read current values from the XMP file only, do not read from LR or lookup any data and write back'
 )
 
+# don't try to do auto adjust in list view
+parser.add_argument('-a', '--no-autoadjust',
+    dest = 'no_autoadjust',
+    action = 'store_true',
+    help = 'Don\'t try to auto adjust columns'
+)
+
+# compact view, compresses columns down to a minimum
+parser.add_argument('-c', '--compact',
+    dest = 'compact_view',
+    action = 'store_true',
+    help = 'Very compact list view'
+)
+
 # Do not create backup files
 parser.add_argument('-n', '--nobackup',
     dest = 'no_xmp_backup',
@@ -493,7 +518,7 @@ if not args.verbose:
     args.verbose = 0
 
 if args.debug:
-    print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
+    print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, R: {read}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
         incl = args.xmp_sources,
         excl = args.exclude_sources,
         lr = args.lightroom_folder,
@@ -501,6 +526,9 @@ if args.debug:
         osm = args.use_openstreetmap,
         gp = args.google_api_key,
         em = args.email,
+        read = args.read_only,
+        adj = args.no_autoadjust,
+        cmp = args.compact_view,
         nbk = args.no_xmp_backup,
         wrc = args.config_write,
         v = args.verbose,
@@ -714,6 +742,46 @@ if args.read_only:
         'location': 25,
         'path': 40,
     }
+    if args.compact_view:
+        reduce_percent = 40
+        # all formats are reduced to a mininum, we cut % off
+        for format_key in ['filename', 'latitude', 'longitude', 'country', 'state', 'city', 'location', 'path']:
+            format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
+    else:
+        # change sizes for print based on terminal size
+        # NOTE: in screen or term this data might NOT be correct
+        # Current size needs the in between and left/right space data
+        current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
+        if current_columns < get_terminal_size().columns:
+            # only do if not disabled
+            if not args.no_autoadjust:
+                # keep one empty
+                width_up = get_terminal_size().columns - current_columns - 1
+                if width_up > 0:
+                    format_length['path'] += width_up
+        else:
+            # NOTE: perhaps we can have some min size numbers to counter resize
+            # lat/long -> max 6, country -> 10, path -> 20
+            if not args.no_autoadjust:
+                print("Terminal width too small, will adjust layout automatically")
+                # abort flag so we can break out of the second loop too
+                abort = False
+                # start with 10, then increase until we reach max
+                reduce_percent_min = 10
+                reduce_percent_max = 50
+                # loop for each percent grouping and through each reduce size
+                for reduce_percent in range(reduce_percent_min, reduce_percent_max, 10):
+                    for format_key in ['latitude', 'longitude', 'path', 'country', 'state', 'city', 'location', 'filename']:
+                        format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
+                        # abort if the size of the new format is smaller than the terminal columns
+                        if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 <= get_terminal_size().columns:
+                            abort = True
+                            break
+                    # break out of the outer loop too
+                    if abort:
+                        break
+            else:
+                print("Screen layout might be skewed. Increase Terminal width")
     # after how many lines do we reprint the header
     header_repeat = 50;
     # how many pages will we have
@@ -823,10 +891,10 @@ for xmp_file in work_files:
             latitude = str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']], # cut off from the right
             longitude = str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
             code = data_set['CountryCode'][:2].center(4), # is only 2 chars
-            country = textwrap.shorten(data_set['Country'], width = format_length['country'], placeholder = '..'), # shorten from the right
-            state = textwrap.shorten(data_set['State'], width = format_length['state'], placeholder = '..'),
-            city = textwrap.shorten(data_set['City'], width = format_length['city'], placeholder = '..'),
-            location = textwrap.shorten(data_set['Location'], width = format_length['location'], placeholder = '..'),
+            country = shortenString(data_set['Country'], width = format_length['country']), # shorten from the right
+            state = shortenString(data_set['State'], width = format_length['state']),
+            city = shortenString(data_set['City'], width = format_length['city']),
+            location = shortenString(data_set['Location'], width = format_length['location']),
             path = shortenPath(xmp_file, format_length['path'], path_only = True)
         ))
     else:
