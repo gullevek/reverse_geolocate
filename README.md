@@ -21,8 +21,9 @@ See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthe
 
 ## Command line arguments
 
-reverse_geolocate.py [-h] -x
+reverse_geolocate.py [-h] -i
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
+    [-x [EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]]
     [-l LIGHTROOM FOLDER] [-s]
     [-f <overwrite, location, city, state, country, countrycode>]
     [-g GOOGLE API KEY] [-o] [-e EMIL ADDRESS] [-w]
@@ -32,7 +33,8 @@ reverse_geolocate.py [-h] -x
 
 Argument | Argument Value | Description
 --- | --- | ---
--x, --xmp | XMP sidecar source folder or XMP sidecar file itself | Must given argument. It sets the path where the script will search for XMP sidecar files. It will traverse into subdirectories. A single XMP sidecar file can also be given. If the same file folder combination is found only one is processed.
+-i, --include-source | XMP sidecar source folder or XMP sidecar file itself | Must given argument. It sets the path where the script will search for XMP sidecar files. It will traverse into subdirectories. A single XMP sidecar file can also be given. If the same file folder combination is found only one is processed.
+-x, --exclude-source | Folder or File | If given those files and folders will be excluded from work
 -l, --lightroom | Lightroom DB base folder | The folder where the .lrcat file is located. Optional, if this is set, LR values are read before any Google maps connection is done. Fills the Latitude and Longitude and the location names. Lightroom data never overwrites data already set in the XMP sidecar file. It is recommended to have Lightroom write the XMP sidecar file before this script is run
 -s, --strict | | Do strict check for Lightroom files and include the path into the check
 -f, --field | Keyword: overwrite, location, city, state, country, countrycode | In the default no data is overwritten if it is already set. With the 'overwrite' flag all data is set new from the Google Maps location data. Other arguments are each of the location fields and if set only this field will be set. This can be combined with the 'overwrite' flag to overwrite already set data
@@ -53,13 +55,19 @@ If the Lightroom lookup is used without the --strict argument and several files 
 #### Example
 
 ```
-reverse_geolocate.py -x Photos/2017/01 -x Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
+reverse_geolocate.py -i Photos/2017/01 -i Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
 ```
 
 Will find all XMP sidecar files in both folders *Photos/2017/01* and *Photos/2017/02* and all folder below it. Uses the Lightroom database at *LightRoom/MyCatalogue*. The script will overwrite all data, even if it is already set
 
 ```
-reverse_geolocate.py -x Photos/2017/01/Event-01/some_photo.xmp -f location
+reverse_geolocate.py -i Photos/2017/01 -i Photos/2017/02 -x Photos/2017/02/Folder\ A -x Photos/2017/01/Folder\ B/some_file.xmp -l LightRoom/MyCatalogue
+```
+
+Will exlucde "Photos/2017/02/Folder A" from processing. For -x also a file (including the .xmp extension) can be given.
+
+```
+reverse_geolocate.py -i Photos/2017/01/Event-01/some_photo.xmp -f location
 ```
 
 Only works on *some_photo.xmp* file and will only set the *location* field if it is not yet set.

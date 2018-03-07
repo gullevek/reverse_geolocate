@@ -13,7 +13,8 @@ import argparse, sqlite3, requests, configparser, textwrap
 import glob, os, sys, re
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, XMPError, consts
-from shutil import copyfile
+from shutil import copyfile, get_terminal_size
+from math import ceil
 
 ##############################################################
 ### FUNCTIONS
@@ -33,8 +34,8 @@ class writable_dir_folder(argparse.Action):
                 # init new output array
                 out = []
                 # if we have a previous list in the namespace extend current list
-                if type(namespace.xmp_sources) is list:
-                    out.extend(namespace.xmp_sources)
+                if type(getattr(namespace, self.dest)) is list:
+                    out.extend(getattr(namespace, self.dest))
                 # add the new dir to it
                 out.append(prospective_dir)
                 # and write that list back to the self.dest in the namespace
@@ -350,7 +351,11 @@ def shortenPath(path, length = 30, file_only = False, path_only = False):
 # RETURN: line counter +1
 # DESC  : prints header line and header seperator line
 def printHeader(header, lines = 0, header_line = 0):
+    global page_no
     if lines == header_line:
+        # add one to the pages shown and reset the lines to start new page
+        page_no += 1
+        lines = 0
         # print header
         print("{}".format(header))
     lines += 1
@@ -376,13 +381,21 @@ parser = argparse.ArgumentParser(
 
 # xmp folder (or folders), or file (or files)
 # note that the target directory or file needs to be writeable
-parser.add_argument('-x', '--xmp',
+parser.add_argument('-i', '--include-source',
     required = True,
     nargs = '*',
     action = writable_dir_folder,
     dest = 'xmp_sources',
     metavar = 'XMP SOURCE FOLDER',
     help = 'The source folder or folders with the XMP files that need reverse geo encoding to be set. Single XMP files can be given here'
+)
+# exclude folders
+parser.add_argument('-x', '--exclude-source',
+    nargs = '*',
+    action = writable_dir_folder,
+    dest = 'exclude_sources',
+    metavar = 'EXCLUDE XMP SOURCE FOLDER',
+    help = 'Folders and files that will be excluded.'
 )
 
 # LR database (base folder)
@@ -480,8 +493,9 @@ if not args.verbose:
     args.verbose = 0
 
 if args.debug:
-    print("### ARGUMENT VARS: X: {xmp}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
-        xmp = args.xmp_sources,
+    print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
+        incl = args.xmp_sources,
+        excl = args.exclude_sources,
         lr = args.lightroom_folder,
         fc = args.field_controls,
         osm = args.use_openstreetmap,
@@ -662,24 +676,30 @@ xmp = XMPMeta()
 for xmp_file_source in args.xmp_sources:
     # if folder, open and loop
     # NOTE: we do check for folders in there, if there are we recourse traverse them
-    if os.path.isdir(xmp_file_source):
+    # also check that folder is not in exclude list
+    if os.path.isdir(xmp_file_source) and xmp_file_source.rstrip('/') not in [x.rstrip('/') for x in args.exclude_sources]:
         # open folder and look for any .xmp files and push them into holding array
         # if there are folders, dive into them
         # or glob glob all .xmp files + directory
         for root, dirs, files in os.walk(xmp_file_source):
             for file in sorted(files):
-                # but has no .BK. inside
-                if file.endswith(".xmp") and ".BK." not in file:
+                # 1) but has no .BK. inside
+                # 2) file is not in exclude list
+                # 3) full folder is not in exclude list
+                if file.endswith(".xmp") and ".BK." not in file \
+                and "{}/{}".format(root, file) not in args.exclude_sources \
+                and root.rstrip('/') not in [x.rstrip('/') for x in args.exclude_sources]:
                     if "{}/{}".format(root, file) not in work_files:
                         work_files.append("{}/{}".format(root, file))
                         count['all'] += 1
     else:
-        if xmp_file_source not in work_files:
+        # not already added to list and not in the exclude list either
+        if xmp_file_source not in work_files and xmp_file_source not in args.exclude_sources:
             work_files.append(xmp_file_source)
             count['all'] += 1
-
 if args.debug:
     print("### Work Files {}".format(work_files))
+
 # if we have read only we print list format style
 if args.read_only:
     # various string lengths
@@ -692,10 +712,14 @@ if args.read_only:
         'state': 18,
         'city': 20,
         'location': 25,
-        'path': 30,
+        'path': 40,
     }
     # after how many lines do we reprint the header
-    header_repeat = 40;
+    header_repeat = 50;
+    # how many pages will we have
+    page_all = ceil(len(work_files) / header_repeat)
+    # current page number
+    page_no = 1
     # the formatted line for the output
     format_line = " {{filename:<{}}} | {{latitude:>{}}} | {{longitude:>{}}} | {{code:<{}}} | {{country:<{}}} | {{state:<{}}} | {{city:<{}}} | {{location:<{}}} | {{path:<{}}}".format(
         format_length['filename'],
@@ -715,7 +739,7 @@ if args.read_only:
     header_line = '''{}
 {}
 {}'''.format(
-        '', # can later be set to something else, eg page numbers
+        '> Page {page_no:,}/{page_all:,}', # can later be set to something else, eg page numbers
         format_line.format( # the header title line
             filename = 'File',
             latitude = 'Latitude',
@@ -740,7 +764,10 @@ if args.read_only:
         )
     )
     # print header
-    printHeader(header_line)
+    printHeader(header_line.format(page_no = page_no, page_all = page_all))
+    # print no files found if we have no files
+    if not work_files:
+        print("{:<60}".format('[!!!] No files found'))
 # now we just loop through each file and work on them
 for xmp_file in work_files:
     if not args.read_only:
@@ -789,7 +816,7 @@ for xmp_file in work_files:
     if args.read_only:
         # for read only we print out the data formatted
         # headline check, do we need to print that
-        count['read'] = printHeader(header_line, count['read'], header_repeat)
+        count['read'] = printHeader(header_line.format(page_no = page_no, page_all = page_all), count['read'], header_repeat)
         # the data content
         print(format_line.format(
             filename = shortenPath(xmp_file, format_length['filename'], file_only = True), # shorten from the left
