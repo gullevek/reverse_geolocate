@@ -120,15 +120,16 @@ order | type | target set
 After the script is done the following overview will be printed
 
 ```
-==============================
-Found XMP Files       : 3
-Updated               : 0
-Skipped               : 2
-New GeoLocation Google: 0
-GeoLocation from Cache: 0
-Failed for Reverse Geo: 1
-GeoLoc from Lightroom : 0
-No Lightroom data     : 0
+=======================================
+XMP Files found             :        57
+Updated                     :         3
+Skipped                     :        54
+New GeoLocation from Map    :         2
+GeoLocation from Cache      :         1
+Failed reverse GeoLocate    :         0
+GeoLocaction from Lightroom :         1
+No Lightroom data found     :        46
+More than one found in LR   :         0
 ```
 
 If there are problems with getting data from the Google Maps API the complete errior sting will be printed
