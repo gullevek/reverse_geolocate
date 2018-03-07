@@ -774,7 +774,7 @@ if args.read_only:
                     for format_key in ['latitude', 'longitude', 'path', 'country', 'state', 'city', 'location', 'filename']:
                         format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
                         # abort if the size of the new format is smaller than the terminal columns
-                        if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 <= get_terminal_size().columns:
+                        if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 3 <= get_terminal_size().columns:
                             abort = True
                             break
                     # break out of the outer loop too
