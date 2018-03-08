@@ -474,6 +474,13 @@ parser.add_argument('-r', '--read-only',
     help = 'Read current values from the XMP file only, do not read from LR or lookup any data and write back'
 )
 
+# only list unset ones
+parser.add_argument('-u', '--unset-only',
+    dest = 'unset_only',
+    action = 'store_true',
+    help = 'Only list unset XMP files'
+)
+
 # don't try to do auto adjust in list view
 parser.add_argument('-a', '--no-autoadjust',
     dest = 'no_autoadjust',
@@ -520,9 +527,12 @@ if not args.verbose:
 # init exclude source to list if not set
 if not args.exclude_sources:
     args.exclude_sources = []
+# init args unset (for list view) with 0 if unset
+# if not args.unset_only:
+#     args.unset = 0
 
 if args.debug:
-    print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, R: {read}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
+    print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, R: {read}, U: {us}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
         incl = args.xmp_sources,
         excl = args.exclude_sources,
         lr = args.lightroom_folder,
@@ -531,6 +541,7 @@ if args.debug:
         gp = args.google_api_key,
         em = args.email,
         read = args.read_only,
+        us = args.unset,
         adj = args.no_autoadjust,
         cmp = args.compact_view,
         nbk = args.no_xmp_backup,
@@ -651,6 +662,7 @@ cur = ''
 # count variables
 count = {
     'all': 0,
+    'listed': 0,
     'read': 0,
     'map': 0,
     'cache': 0,
@@ -904,21 +916,24 @@ for xmp_file in work_files:
         if args.debug:
             print("### => XMP: {}:{} => {}".format(xmp_fields[xmp_field], xmp_field, data_set[xmp_field]))
     if args.read_only:
-        # for read only we print out the data formatted
-        # headline check, do we need to print that
-        count['read'] = printHeader(header_line.format(page_no = page_no, page_all = page_all), count['read'], header_repeat)
-        # the data content
-        print(format_line.format(
-            filename = shortenPath(xmp_file, format_length['filename'], file_only = True), # shorten from the left
-            latitude = str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']], # cut off from the right
-            longitude = str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
-            code = data_set['CountryCode'][:2].center(4), # is only 2 chars
-            country = shortenString(data_set['Country'], width = format_length['country']), # shorten from the right
-            state = shortenString(data_set['State'], width = format_length['state']),
-            city = shortenString(data_set['City'], width = format_length['city']),
-            location = shortenString(data_set['Location'], width = format_length['location']),
-            path = shortenPath(xmp_file, format_length['path'], path_only = True)
-        ))
+        # view only if list all or if data is unset
+        if not args.unset_only or (args.unset_only and '' in data_set.values()):
+            # for read only we print out the data formatted
+            # headline check, do we need to print that
+            count['read'] = printHeader(header_line.format(page_no = page_no, page_all = page_all), count['read'], header_repeat)
+            # the data content
+            print(format_line.format(
+                filename = shortenPath(xmp_file, format_length['filename'], file_only = True), # shorten from the left
+                latitude = str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']], # cut off from the right
+                longitude = str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
+                code = data_set['CountryCode'][:2].center(4), # is only 2 chars
+                country = shortenString(data_set['Country'], width = format_length['country']), # shorten from the right
+                state = shortenString(data_set['State'], width = format_length['state']),
+                city = shortenString(data_set['City'], width = format_length['city']),
+                location = shortenString(data_set['Location'], width = format_length['location']),
+                path = shortenPath(xmp_file, format_length['path'], path_only = True)
+            ))
+            count['listed'] += 1
     else:
         # create a duplicate copy for later checking if something changed
         data_set_original = data_set.copy()
@@ -1043,6 +1058,8 @@ if use_lightroom:
 # end stats only if we write
 print("{}".format('=' * 39))
 print("XMP Files found             : {:9,}".format(count['all']))
+if args.read_only:
+    print("XMP Files listed            : {:9,}".format(count['listed']))
 if not args.read_only:
     print("Updated                     : {:9,}".format(count['changed']))
     print("Skipped                     : {:9,}".format(count['skipped']))
