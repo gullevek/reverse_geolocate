@@ -514,8 +514,12 @@ args = parser.parse_args()
 ### MAIN CODE
 ##############################################################
 
+# init verbose to 0 if not set
 if not args.verbose:
     args.verbose = 0
+# init exclude source to list if not set
+if not args.exclude_sources:
+    args.exclude_sources = []
 
 if args.debug:
     print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, R: {read}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
@@ -748,40 +752,58 @@ if args.read_only:
         for format_key in ['filename', 'latitude', 'longitude', 'country', 'state', 'city', 'location', 'path']:
             format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
     else:
+        # minimum resize size for a column
+        resize_width_min = 4
+        # the resize percent
+        # start with 10, then increase until we reach max
+        resize_percent_min = 10
+        resize_percent_max = 50
+        # abort flag so we can break out of the second loop too
+        abort = False
+        # formay key order, in which order the elements will be resized
+        format_key_order = []
+        # resize flag: 0 no, 1: make bigger, -1: make smaller
         # change sizes for print based on terminal size
         # NOTE: in screen or term this data might NOT be correct
         # Current size needs the in between and left/right space data
         current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
         if current_columns < get_terminal_size().columns:
-            # only do if not disabled
-            if not args.no_autoadjust:
-                # keep one empty
-                width_up = get_terminal_size().columns - current_columns - 1
-                if width_up > 0:
-                    format_length['path'] += width_up
+            resize = 1
+            format_key_order = ['path', 'location', 'state', 'city', 'country', 'filename']
         else:
-            # NOTE: perhaps we can have some min size numbers to counter resize
-            # lat/long -> max 6, country -> 10, path -> 20
-            if not args.no_autoadjust:
-                print("Terminal width too small, will adjust layout automatically")
-                # abort flag so we can break out of the second loop too
-                abort = False
-                # start with 10, then increase until we reach max
-                reduce_percent_min = 10
-                reduce_percent_max = 50
-                # loop for each percent grouping and through each reduce size
-                for reduce_percent in range(reduce_percent_min, reduce_percent_max, 10):
-                    for format_key in ['latitude', 'longitude', 'path', 'country', 'state', 'city', 'location', 'filename']:
-                        format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
-                        # abort if the size of the new format is smaller than the terminal columns
-                        if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 3 <= get_terminal_size().columns:
-                            abort = True
-                            break
-                    # break out of the outer loop too
-                    if abort:
+            resize = -1
+            format_key_order = ['latitude', 'longitude', 'path', 'country', 'state', 'city', 'location', 'filename']
+        # if we have no auto adjust
+        if resize and args.no_autoadjust:
+            # warningn if screen is too small
+            if resize == -1:
+                print("[!!!] Screen layout might be skewed. Increase Terminal width")
+            resize = 0
+        else:
+            for resize_percent in range(resize_percent_min, resize_percent_max, 10):
+                for format_key in format_key_order:
+                    resize_width = (format_length[format_key] / 100) * resize_percent
+                    # if we down size, make it negative
+                    if resize == -1:
+                        resize_width *= -1
+                    resize_width = ceil(format_length[format_key] + resize_width)
+                    # in case too small, keep old one
+                    format_length[format_key] = resize_width if resize_width > resize_width_min else format_length[format_key]
+                    # calc new width for check if we can abort
+                    current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
+                    if (resize == 1 and current_columns >= get_terminal_size().columns) or (resize == -1 and current_columns < get_terminal_size().columns):
+                        # check that we are not OVER but one under
+                        width_up = get_terminal_size().columns - current_columns - 1
+                        if (resize == 1 and width_up < 0) or (resize == -1 and width_up != 0):
+                            if format_length['path'] + width_up >= resize_width_min:
+                                format_length['path'] += width_up
+                        abort = True
                         break
-            else:
-                print("Screen layout might be skewed. Increase Terminal width")
+                if abort:
+                    break
+            if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 > get_terminal_size().columns:
+                print("[!!!] Screen layout might be skewed. Increase Terminal width")
+
     # after how many lines do we reprint the header
     header_repeat = 50;
     # how many pages will we have
@@ -809,15 +831,15 @@ if args.read_only:
 {}'''.format(
         '> Page {page_no:,}/{page_all:,}', # can later be set to something else, eg page numbers
         format_line.format( # the header title line
-            filename = 'File',
-            latitude = 'Latitude',
-            longitude = 'Longitude',
+            filename = 'File'[:format_length['filename']],
+            latitude = 'Latitude'[:format_length['latitude']],
+            longitude = 'Longitude'[:format_length['longitude']],
             code = 'Code',
-            country = 'Country',
-            state = 'State',
-            city = 'City',
-            location = 'Location',
-            path = 'Path'
+            country = 'Country'[:format_length['country']],
+            state = 'State'[:format_length['state']],
+            city = 'City'[:format_length['city']],
+            location = 'Location'[:format_length['location']],
+            path = 'Path'[:format_length['path']]
         ),
         "{}+{}+{}+{}+{}+{}+{}+{}+{}".format( # the header seperator line
             '-' * (format_length['filename'] + 2),
