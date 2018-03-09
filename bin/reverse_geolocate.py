@@ -267,7 +267,7 @@ def convertLongToDMS(lat_long):
     return convertLatLongToDMS(lat_long, is_longitude = True)
 
 # METHOD: longLatReg
-# PARAMS: latitude, longitude
+# PARAMS: latitude in (n,n.nNSEW format), longitude
 # RETURN: dict with converted lat/long
 # DESC  : converts the XMP/EXIF formatted GPS Long/Lat coordinates
 #         from the <Degree>,<Minute.Second><NSEW> to the normal float
