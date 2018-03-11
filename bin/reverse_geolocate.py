@@ -201,7 +201,7 @@ def reverseGeolocateGoogle(longitude, latitude):
         # first entry for type = premise
         for entry in response.json()['results']:
             for sub_entry in entry:
-                if sub_entry == 'types' and ('premise' in entry[sub_entry] or 'street_address' in entry[sub_entry] or 'sublocality' in entry[sub_entry]):
+                if sub_entry == 'types' and ('premise' in entry[sub_entry] or 'route' in entry[sub_entry] or 'street_address' in entry[sub_entry] or 'sublocality' in entry[sub_entry]):
                     # print("Entry {}: {}".format(sub_entry, entry[sub_entry]))
                     # print("Address {}".format(entry['address_components']))
                     # type
@@ -528,8 +528,8 @@ if not args.verbose:
 if not args.exclude_sources:
     args.exclude_sources = []
 # init args unset (for list view) with 0 if unset
-# if not args.unset_only:
-#     args.unset = 0
+if not args.unset_only:
+    args.unset_only = 0
 
 if args.debug:
     print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, R: {read}, U: {us}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
@@ -541,7 +541,7 @@ if args.debug:
         gp = args.google_api_key,
         em = args.email,
         read = args.read_only,
-        us = args.unset,
+        us = args.unset_only,
         adj = args.no_autoadjust,
         cmp = args.compact_view,
         nbk = args.no_xmp_backup,
