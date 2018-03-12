@@ -9,24 +9,32 @@
 #          * all data is translated into English with long vowl system (aka ou or oo is ō)
 # MUST HAVE: Python XMP Toolkit (http://python-xmp-toolkit.readthedocs.io/)
 
-import argparse, sqlite3, requests, configparser, textwrap
-import glob, os, sys, re
+import argparse
+import sqlite3
+import requests
+import configparser
+# import textwrap
+import glob
+import os
+import sys
+import re
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
-from libxmp import XMPMeta, XMPError, consts
+from libxmp import XMPMeta, consts
 from shutil import copyfile, get_terminal_size
 from math import ceil
 
 ##############################################################
-### FUNCTIONS
+# FUNCTIONS
 ##############################################################
 
-### ARGPARSE HELPERS
+
+# ARGPARSE HELPERS
 
 # call: writable_dir_folder
 # checks if this is a writeable folder OR file
 # AND it works on nargs *
 class writable_dir_folder(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string = None):
+    def __call__(self, parser, namespace, values, option_string=None):
         # we loop through list (this is because of nargs *)
         for prospective_dir in values:
             # if valid and writeable (dir or file)
@@ -43,19 +51,21 @@ class writable_dir_folder(argparse.Action):
             else:
                 raise argparse.ArgumentTypeError("writable_dir_folder: {0} is not a writable dir".format(prospective_dir))
 
+
 # call: readable_dir
 # custom define to check if it is a valid directory
 class readable_dir(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string = None):
-        prospective_dir=values
+    def __call__(self, parser, namespace, values, option_string=None):
+        prospective_dir = values
         if not os.path.isdir(prospective_dir):
             raise argparse.ArgumentTypeError("readable_dir:{0} is not a valid path".format(prospective_dir))
         if os.access(prospective_dir, os.R_OK):
-            setattr(namespace,self.dest,prospective_dir)
+            setattr(namespace, self.dest, prospective_dir)
         else:
             raise argparse.ArgumentTypeError("readable_dir:{0} is not a readable dir".format(prospective_dir))
 
-### MAIN FUNCTIONS
+
+# MAIN FUNCTIONS
 
 # METHOD: reverseGeolocate
 # PARAMS: latitude, longitude, map search target (google or openstreetmap)
@@ -67,7 +77,7 @@ def reverseGeolocate(longitude, latitude, map_type):
     # format: Deg,Min.Sec[NSEW]
     # NOTE: lat is N/S, long is E/W
     # detect and convert
-    lat_long = longLatReg(longitude = longitude, latitude = latitude)
+    lat_long = longLatReg(longitude=longitude, latitude=latitude)
     # which service to use
     if map_type == 'google':
         return reverseGeolocateGoogle(lat_long['longitude'], lat_long['latitude'])
@@ -79,6 +89,7 @@ def reverseGeolocate(longitude, latitude, map_type):
             'status': 'ERROR',
             'error': 'Map type not valid'
         }
+
 
 # METHOD: reverseGeolocateInit
 # PARAMS: longitude, latitude
@@ -103,6 +114,7 @@ def reverseGeolocateInit(longitude, latitude):
         geolocation['status'] = 'ERROR'
         geolocation['error_message'] = 'Latitude {} or Longitude {} are not valid'.format(latitude, longitude)
     return geolocation
+
 
 # METHOD: reverseGeolocateOpenStreetMap
 # PARAMS: latitude, longitude
@@ -131,8 +143,8 @@ def reverseGeolocateOpenStreetMap(longitude, latitude):
     # if we have an email, add it here
     if args.email:
         payload['email'] = args.email
-    url = "{base}".format(base = base)
-    response = requests.get(url, params = payload)
+    url = "{base}".format(base=base)
+    response = requests.get(url, params=payload)
     # debug output
     if args.debug:
         print("OpenStreetMap search for Lat: {}, Long: {}".format(latitude, longitude))
@@ -163,6 +175,7 @@ def reverseGeolocateOpenStreetMap(longitude, latitude):
     # return
     return geolocation
 
+
 # METHOD: reverseGeolocateGoogle
 # PARAMS: latitude, longitude
 # RETURN: Google Maps reverse location lookup
@@ -182,26 +195,40 @@ def reverseGeolocateGoogle(longitude, latitude):
     base = "maps.googleapis.com/maps/api/geocode/json?"
     # build the base params
     payload = {
-        'latlng': '{lat},{lon}'.format(lon = longitude, lat = latitude),
+        'latlng': '{lat},{lon}'.format(lon=longitude, lat=latitude),
         'sensor': sensor
     }
     # if we have a google api key, add it here
     if args.google_api_key:
         payload['key'] = args.google_api_key
     # build the full url and send it to google
-    url = "{protocol}{base}".format(protocol = protocol, base = base)
-    response = requests.get(url, params = payload)
+    url = "{protocol}{base}".format(protocol=protocol, base=base)
+    response = requests.get(url, params=payload)
     # debug output
     if args.debug:
         print("Google search for Lat: {}, Long: {} with {}".format(longitude, latitude, response.url))
     if args.debug and args.verbose >= 1:
         print("Google response: {} => JSON: {}".format(response, response.json()))
+    # type map
+    # For automated return of correct data into set to return
+    type_map = {
+        'CountryCode': ['country'],
+        'Country': ['country'],
+        'State': ['administrative_area_level_1', 'administrative_area_level_2'],
+        'City': ['locality'],
+        'Location': ['sublocality_level_1', 'sublocality_level_2', 'route'],
+    }
     # print("Error: {}".format(response.json()['status']))
     if response.json()['status'] == 'OK':
         # first entry for type = premise
         for entry in response.json()['results']:
             for sub_entry in entry:
-                if sub_entry == 'types' and ('premise' in entry[sub_entry] or 'route' in entry[sub_entry] or 'street_address' in entry[sub_entry] or 'sublocality' in entry[sub_entry]):
+                if sub_entry == 'types' and (
+                    'premise' in entry[sub_entry] or
+                    'route' in entry[sub_entry] or
+                    'street_address' in entry[sub_entry] or
+                    'sublocality' in entry[sub_entry]
+                ):
                     # print("Entry {}: {}".format(sub_entry, entry[sub_entry]))
                     # print("Address {}".format(entry['address_components']))
                     # type
@@ -210,30 +237,17 @@ def reverseGeolocateGoogle(longitude, latitude):
                     # -> locality,
                     # -> sublocality (_level_1 or 2 first found, then route)
                     # so we get the data in the correct order
-                    for index in ['country', 'administrative_area_level_1', 'administrative_area_level_2', 'locality', 'sublocality_level_1', 'sublocality_level_2', 'route']:
-                        # loop through the entries in the returned json and find matching
-                        for addr in entry['address_components']:
-                            # print("Addr: {}".format(addr))
-                            # country code + country
-                            if index == 'country' and index in addr['types'] and not geolocation['CountryCode']:
-                                geolocation['CountryCode'] = addr['short_name']
-                                geolocation['Country'] = addr['long_name']
-                            # state
-                            if index == 'administrative_area_level_1' and index in addr['types'] and not geolocation['State']:
-                                geolocation['State'] = addr['long_name']
-                            if index == 'administrative_area_level_2' and index in addr['types'] and not geolocation['State']:
-                                geolocation['State'] = addr['long_name']
-                            # city
-                            if index == 'locality' and index in addr['types'] and not geolocation['City']:
-                                geolocation['City'] = addr['long_name']
-                            # location
-                            if index == 'sublocality_level_1' and index in addr['types'] and not geolocation['Location']:
-                                geolocation['Location'] = addr['long_name']
-                            if index == 'sublocality_level_2' and index in addr['types'] and not geolocation['Location']:
-                                geolocation['Location'] = addr['long_name']
-                            # if all failes try route
-                            if index == 'route' and index in addr['types'] and not geolocation['Location']:
-                                geolocation['Location'] = addr['long_name']
+                    for loc_index in type_map:
+                        for index in type_map[loc_index]:
+                            # this is an array, so we need to loop through each
+                            for addr in entry['address_components']:
+                                # in types check that index is in there and the location is not yet set
+                                if index in addr['types'] and not geolocation[loc_index]:
+                                    # for country code we need to use short name, else we use long name
+                                    if loc_index == 'CountryCode':
+                                        geolocation[loc_index] = addr['short_name']
+                                    else:
+                                        geolocation[loc_index] = addr['long_name']
         # write OK status
         geolocation['status'] = response.json()['status']
     else:
@@ -244,27 +258,33 @@ def reverseGeolocateGoogle(longitude, latitude):
     # return
     return geolocation
 
+
 # METHOD: convertLatLongToDMS
 # PARAMS: latLong in (-)N.N format, lat or long flag (else we can't set N/S)
 # RETURN: Deg,Min.Sec(NESW) format
 # DESC  : convert the LR format of N.N to the Exif GPS format
-def convertLatLongToDMS(lat_long, is_latitude = False, is_longitude = False):
+def convertLatLongToDMS(lat_long, is_latitude=False, is_longitude=False):
     # minus part before . and then multiply rest by 60
     degree = int(abs(lat_long))
     minutes = round((float(abs(lat_long)) - int(abs(lat_long))) * 60, 10)
-    if is_latitude == True:
+    if is_latitude is True:
         direction = 'S' if int(lat_long) < 0 else 'N'
-    elif is_longitude == True:
+    elif is_longitude is True:
         direction = 'W' if int(lat_long) < 0 else 'E'
     else:
         direction = '(INVALID)'
     return "{},{}{}".format(degree, minutes, direction)
 
-# wrapper functions for Long/Lat calls
+
+# wrapper functions for Long/Lat calls: latitude
 def convertLatToDMS(lat_long):
-    return convertLatLongToDMS(lat_long, is_latitude = True)
+    return convertLatLongToDMS(lat_long, is_latitude=True)
+
+
+# wrapper for Long/Lat call: longitute
 def convertLongToDMS(lat_long):
-    return convertLatLongToDMS(lat_long, is_longitude = True)
+    return convertLatLongToDMS(lat_long, is_longitude=True)
+
 
 # METHOD: longLatReg
 # PARAMS: latitude in (n,n.nNSEW format), longitude
@@ -291,11 +311,16 @@ def longLatReg(longitude, latitude):
                 lat_long[element] *= -1
     return lat_long
 
-# wrapper calls for DMS to Lat/Long
+
+# wrapper calls for DMS to Lat/Long: latitude
 def convertDMStoLat(lat_long):
     return longLatReg('0,0.0N', lat_long)['latitude']
+
+
+# # wrapper calls for DMS to Lat/Long: longitude
 def convertDMStoLong(lat_long):
     return longLatReg(lat_long, '0,0.0N')['longitude']
+
 
 # METHOD: checkOverwrite
 # PARAMS: data: value field, key: XMP key, field_controls: array from args
@@ -320,22 +345,23 @@ def checkOverwrite(data, key, field_controls):
         status = True
     if args.debug:
         print("Data set: {data_set}, Key: {key_lower}, Field Controls len: {field_count}, Overwrite: {overwrite_flag}, Key in Field Controls: {key_ok}, OVERWRITE: {do_overwrite}".format(
-            data_set = 'YES' if data else 'NO',
-            key_lower = key.lower(),
-            field_count = len(field_controls),
-            overwrite_flag = 'OVERWRITE' if 'overwrite' in field_controls else 'NOT OVERWRITE',
-            key_ok = 'KEY OK' if key.lower() in field_controls else 'KEY NOT MATCHING',
-            do_overwrite = status
+            data_set='YES' if data else 'NO',
+            key_lower=key.lower(),
+            field_count=len(field_controls),
+            overwrite_flag='OVERWRITE' if 'overwrite' in field_controls else 'NOT OVERWRITE',
+            key_ok='KEY OK' if key.lower() in field_controls else 'KEY NOT MATCHING',
+            do_overwrite=status
         ))
     return status
+
 
 # METHOD: shortenPath
 # PARAMS: path = string, length = int, file_only = true/false, path_only = true/false
 # RETURN: shortend path with ... in front
 # DESC  : shortes a path from the left so it fits into lenght
 #         if file only is set to true, it will split the file, if path only is set, only the path
-def shortenPath(path, length = 30, file_only = False, path_only = False):
-    length = length - 3;
+def shortenPath(path, length=30, file_only=False, path_only=False):
+    length = length - 3
     # I assume the XMP file name has no CJK characters inside, so I strip out the path
     # The reason is that if there are CJK characters inside it will screw up the formatting
     if file_only:
@@ -344,24 +370,26 @@ def shortenPath(path, length = 30, file_only = False, path_only = False):
         path = os.path.split(path)[0]
     if len(path) > length:
         path = "{} {}".format("..", path[len(path) - length:])
-    return path;
+    return path
+
 
 # METHOD: shortenString
 # PARAMS: string, shorten width, override shorten placeholder
 # RETURN: shortened string
 # DESC  : shortens a string to width and attached placeholder
-def shortenString(string, width, placeholder = '..'):
+def shortenString(string, width, placeholder='..'):
     if len(str(string)) > width:
         width -= len(placeholder)
         return "{}{}".format(str(string)[:width], placeholder)
     else:
         return str(string)
 
+
 # METHOD: printHeader
 # PARAMS: header string, line counter, print header counter trigger
 # RETURN: line counter +1
 # DESC  : prints header line and header seperator line
-def printHeader(header, lines = 0, header_line = 0):
+def printHeader(header, lines=0, header_line=0):
     global page_no
     if lines == header_line:
         # add one to the pages shown and reset the lines to start new page
@@ -372,6 +400,7 @@ def printHeader(header, lines = 0, header_line = 0):
     lines += 1
     return lines
 
+
 # METHOD: fileSortNumber
 # PARAMS: file name
 # RETURN: number found in the BK string or 0 for none
@@ -381,144 +410,148 @@ def fileSortNumber(file):
     return int(m.group(1)) if m is not None else 0
 
 ##############################################################
-### ARGUMENT PARSNING
+# ARGUMENT PARSNING
 ##############################################################
 
+
 parser = argparse.ArgumentParser(
-    description = 'Reverse Geoencoding based on set Latitude/Longitude data in XMP files',
+    description='Reverse Geoencoding based on set Latitude/Longitude data in XMP files',
     # formatter_class=argparse.RawDescriptionHelpFormatter,
-    epilog = 'Sample: (todo)'
+    epilog='Sample: (todo)'
 )
 
 # xmp folder (or folders), or file (or files)
 # note that the target directory or file needs to be writeable
 parser.add_argument('-i', '--include-source',
-    required = True,
-    nargs = '*',
-    action = writable_dir_folder,
-    dest = 'xmp_sources',
-    metavar = 'XMP SOURCE FOLDER',
-    help = 'The source folder or folders with the XMP files that need reverse geo encoding to be set. Single XMP files can be given here'
-)
+                    required=True,
+                    nargs='*',
+                    action=writable_dir_folder,
+                    dest='xmp_sources',
+                    metavar='XMP SOURCE FOLDER',
+                    help='The source folder or folders with the XMP files that need reverse geo encoding to be set. Single XMP files can be given here'
+                    )
 # exclude folders
 parser.add_argument('-x', '--exclude-source',
-    nargs = '*',
-    action = writable_dir_folder,
-    dest = 'exclude_sources',
-    metavar = 'EXCLUDE XMP SOURCE FOLDER',
-    help = 'Folders and files that will be excluded.'
-)
+                    nargs='*',
+                    action=writable_dir_folder,
+                    dest='exclude_sources',
+                    metavar='EXCLUDE XMP SOURCE FOLDER',
+                    help='Folders and files that will be excluded.'
+                    )
 
 # LR database (base folder)
 # get .lrcat file in this folder
 parser.add_argument('-l', '--lightroom',
-    # required = True,
-    action = readable_dir,
-    dest = 'lightroom_folder',
-    metavar = 'LIGHTROOM FOLDER',
-    help = 'Lightroom catalogue base folder'
-)
+                    # required=True,
+                    action=readable_dir,
+                    dest='lightroom_folder',
+                    metavar='LIGHTROOM FOLDER',
+                    help='Lightroom catalogue base folder'
+                    )
 
 # strict LR check with base path next to the file base name
 parser.add_argument('-s', '--strict',
-    dest = 'lightroom_strict',
-    action = 'store_true',
-    help = 'Do strict check for Lightroom files including Path in query'
-)
+                    dest='lightroom_strict',
+                    action='store_true',
+                    help='Do strict check for Lightroom files including Path in query'
+                    )
 
 # set behaviour override
 # FLAG: default: only set not filled
 # other: overwrite all or overwrite if one is missing, overwrite specifc field (as defined below)
 # fields: Location, City, State, Country, CountryCode
 parser.add_argument('-f', '--field',
-    action = 'append',
-    type = str.lower, # make it lowercase for check
-    choices = ['overwrite', 'location', 'city', 'state', 'country', 'countrycode'],
-    dest = 'field_controls',
-    metavar = '<overwrite, location, city, state, country, countrycode>',
-    help = 'On default only set fields that are not set yet. Options are: Overwrite (write all new), Location, City, State, Country, CountryCode. Multiple can be given for combination overwrite certain fields only or set only certain fields. If with overwrite the field will be overwritten if already set, else it will be always skipped.'
-)
+                    action='append',
+                    type=str.lower,  # make it lowercase for check
+                    choices=['overwrite', 'location', 'city', 'state', 'country', 'countrycode'],
+                    dest='field_controls',
+                    metavar='<overwrite, location, city, state, country, countrycode>',
+                    help='On default only set fields that are not set yet. Options are: '\
+                         'Overwrite (write all new), Location, City, State, Country, CountryCode. '\
+                         'Multiple can be given for combination overwrite certain fields only or set only certain fields. '\
+                         'If with overwrite the field will be overwritten if already set, else it will be always skipped.'
+                    )
 
 # Google Maps API key to overcome restrictions
 parser.add_argument('-g', '--google',
-    dest = 'google_api_key',
-    metavar = 'GOOGLE API KEY',
-    help = 'Set a Google API Maps key to overcome the default lookup limitations'
-)
+                    dest='google_api_key',
+                    metavar='GOOGLE API KEY',
+                    help='Set a Google API Maps key to overcome the default lookup limitations'
+                    )
 
 # use open street maps
 parser.add_argument('-o', '--openstreetmap',
-    dest = 'use_openstreetmap',
-    action = 'store_true',
-    help = 'Use openstreetmap instead of Google'
-)
+                    dest='use_openstreetmap',
+                    action='store_true',
+                    help='Use openstreetmap instead of Google'
+                    )
 
 # email of open street maps requests
 parser.add_argument('-e', '--email',
-    dest = 'email',
-    metavar = 'EMIL ADDRESS',
-    help = 'An email address for OpenStreetMap'
-)
+                    dest='email',
+                    metavar='EMIL ADDRESS',
+                    help='An email address for OpenStreetMap'
+                    )
 
 # write api/email settings to config file
 parser.add_argument('-w', '--write-settings',
-    dest = 'config_write',
-    action = 'store_true',
-    help = 'Write Google API or OpenStreetMap email to config file'
-)
+                    dest='config_write',
+                    action='store_true',
+                    help='Write Google API or OpenStreetMap email to config file'
+                    )
 
 # only read data and print on screen, do not write anything
 parser.add_argument('-r', '--read-only',
-    dest = 'read_only',
-    action = 'store_true',
-    help = 'Read current values from the XMP file only, do not read from LR or lookup any data and write back'
-)
+                    dest='read_only',
+                    action='store_true',
+                    help='Read current values from the XMP file only, do not read from LR or lookup any data and write back'
+                    )
 
 # only list unset ones
 parser.add_argument('-u', '--unset-only',
-    dest = 'unset_only',
-    action = 'store_true',
-    help = 'Only list unset XMP files'
-)
+                    dest='unset_only',
+                    action='store_true',
+                    help='Only list unset XMP files'
+                    )
 
 # don't try to do auto adjust in list view
 parser.add_argument('-a', '--no-autoadjust',
-    dest = 'no_autoadjust',
-    action = 'store_true',
-    help = 'Don\'t try to auto adjust columns'
-)
+                    dest='no_autoadjust',
+                    action='store_true',
+                    help='Don\'t try to auto adjust columns'
+                    )
 
 # compact view, compresses columns down to a minimum
 parser.add_argument('-c', '--compact',
-    dest = 'compact_view',
-    action = 'store_true',
-    help = 'Very compact list view'
-)
+                    dest='compact_view',
+                    action='store_true',
+                    help='Very compact list view'
+                    )
 
 # Do not create backup files
 parser.add_argument('-n', '--nobackup',
-    dest = 'no_xmp_backup',
-    action = 'store_true',
-    help = 'Do not create a backup from the XMP file'
-)
+                    dest='no_xmp_backup',
+                    action='store_true',
+                    help='Do not create a backup from the XMP file'
+                    )
 
 # verbose args for more detailed output
 parser.add_argument('-v', '--verbose',
-    action = 'count',
-    dest = 'verbose',
-    help = 'Set verbose output level'
-)
+                    action='count',
+                    dest='verbose',
+                    help='Set verbose output level'
+                    )
 
 # debug flag
-parser.add_argument('--debug', action = 'store_true', dest = 'debug', help = 'Set detailed debug output')
+parser.add_argument('--debug', action='store_true', dest='debug', help='Set detailed debug output')
 # test flag
-parser.add_argument('--test', action = 'store_true', dest = 'test', help = 'Do not write data back to file')
+parser.add_argument('--test', action='store_true', dest='test', help='Do not write data back to file')
 
 # read in the argumens
 args = parser.parse_args()
 
 ##############################################################
-### MAIN CODE
+# MAIN CODE
 ##############################################################
 
 # init verbose to 0 if not set
@@ -533,22 +566,22 @@ if not args.unset_only:
 
 if args.debug:
     print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, R: {read}, U: {us}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
-        incl = args.xmp_sources,
-        excl = args.exclude_sources,
-        lr = args.lightroom_folder,
-        fc = args.field_controls,
-        osm = args.use_openstreetmap,
-        gp = args.google_api_key,
-        em = args.email,
-        read = args.read_only,
-        us = args.unset_only,
-        adj = args.no_autoadjust,
-        cmp = args.compact_view,
-        nbk = args.no_xmp_backup,
-        wrc = args.config_write,
-        v = args.verbose,
-        d = args.debug,
-        t = args.test
+        incl=args.xmp_sources,
+        excl=args.exclude_sources,
+        lr=args.lightroom_folder,
+        fc=args.field_controls,
+        osm=args.use_openstreetmap,
+        gp=args.google_api_key,
+        em=args.email,
+        read=args.read_only,
+        us=args.unset_only,
+        adj=args.no_autoadjust,
+        cmp=args.compact_view,
+        nbk=args.no_xmp_backup,
+        wrc=args.config_write,
+        v=args.verbose,
+        d=args.debug,
+        t=args.test
     ))
 
 # error flag
@@ -626,7 +659,7 @@ if args.debug:
 # photoshop:Country
 # Iptc4xmpCore:CountryCode
 xmp_fields = {
-    'GPSLatitude': consts.XMP_NS_EXIF, # EXIF GPSLat/Long are stored in Degree,Min.Sec[NESW] format
+    'GPSLatitude': consts.XMP_NS_EXIF,  # EXIF GPSLat/Long are stored in Degree,Min.Sec[NESW] format
     'GPSLongitude': consts.XMP_NS_EXIF,
     'Location': consts.XMP_NS_IPTCCore,
     'City': consts.XMP_NS_Photoshop,
@@ -677,7 +710,10 @@ count = {
 # do lightroom stuff only if we have the lightroom folder
 if args.lightroom_folder:
     # query string for lightroom DB check
-    query = 'SELECT Adobe_images.id_local, AgLibraryFile.baseName, AgLibraryRootFolder.absolutePath, AgLibraryRootFolder.name as realtivePath, AgLibraryFolder.pathFromRoot, AgLibraryFile.originalFilename, AgHarvestedExifMetadata.gpsLatitude, AgHarvestedExifMetadata.gpsLongitude, AgHarvestedIptcMetadata.locationDataOrigination, AgInternedIptcLocation.value as Location, AgInternedIptcCity.value as City, AgInternedIptcState.value as State, AgInternedIptcCountry.value as Country, AgInternedIptcIsoCountryCode.value as CountryCode '
+    query = 'SELECT Adobe_images.id_local, AgLibraryFile.baseName, AgLibraryRootFolder.absolutePath, AgLibraryRootFolder.name as realtivePath, AgLibraryFolder.pathFromRoot, AgLibraryFile.originalFilename, '
+    query += 'AgHarvestedExifMetadata.gpsLatitude, AgHarvestedExifMetadata.gpsLongitude, '
+    query += 'AgHarvestedIptcMetadata.locationDataOrigination, AgInternedIptcLocation.value as Location, AgInternedIptcCity.value as City, '
+    query += 'AgInternedIptcState.value as State, AgInternedIptcCountry.value as Country, AgInternedIptcIsoCountryCode.value as CountryCode '
     query += 'FROM AgLibraryFile, AgHarvestedExifMetadata, AgLibraryFolder, AgLibraryRootFolder, Adobe_images '
     query += 'LEFT JOIN AgHarvestedIptcMetadata ON Adobe_images.id_local = AgHarvestedIptcMetadata.image '
     query += 'LEFT JOIN AgInternedIptcLocation ON AgHarvestedIptcMetadata.locationRef = AgInternedIptcLocation.id_local '
@@ -731,8 +767,8 @@ for xmp_file_source in args.xmp_sources:
                 # 2) file is not in exclude list
                 # 3) full folder is not in exclude list
                 if file.endswith(".xmp") and ".BK." not in file \
-                and "{}/{}".format(root, file) not in args.exclude_sources \
-                and root.rstrip('/') not in [x.rstrip('/') for x in args.exclude_sources]:
+                  and "{}/{}".format(root, file) not in args.exclude_sources \
+                  and root.rstrip('/') not in [x.rstrip('/') for x in args.exclude_sources]:
                     if "{}/{}".format(root, file) not in work_files:
                         work_files.append("{}/{}".format(root, file))
                         count['all'] += 1
@@ -817,7 +853,7 @@ if args.read_only:
                 print("[!!!] Screen layout might be skewed. Increase Terminal width")
 
     # after how many lines do we reprint the header
-    header_repeat = 50;
+    header_repeat = 50
     # how many pages will we have
     page_all = ceil(len(work_files) / header_repeat)
     # current page number
@@ -841,19 +877,19 @@ if args.read_only:
     header_line = '''{}
 {}
 {}'''.format(
-        '> Page {page_no:,}/{page_all:,}', # can later be set to something else, eg page numbers
-        format_line.format( # the header title line
-            filename = 'File'[:format_length['filename']],
-            latitude = 'Latitude'[:format_length['latitude']],
-            longitude = 'Longitude'[:format_length['longitude']],
-            code = 'Code',
-            country = 'Country'[:format_length['country']],
-            state = 'State'[:format_length['state']],
-            city = 'City'[:format_length['city']],
-            location = 'Location'[:format_length['location']],
-            path = 'Path'[:format_length['path']]
+        '> Page {page_no:,}/{page_all:,}',  # can later be set to something else, eg page numbers
+        format_line.format(  # the header title line
+            filename='File'[:format_length['filename']],
+            latitude='Latitude'[:format_length['latitude']],
+            longitude='Longitude'[:format_length['longitude']],
+            code='Code',
+            country='Country'[:format_length['country']],
+            state='State'[:format_length['state']],
+            city='City'[:format_length['city']],
+            location='Location'[:format_length['location']],
+            path='Path'[:format_length['path']]
         ),
-        "{}+{}+{}+{}+{}+{}+{}+{}+{}".format( # the header seperator line
+        "{}+{}+{}+{}+{}+{}+{}+{}+{}".format(  # the header seperator line
             '-' * (format_length['filename'] + 2),
             '-' * (format_length['latitude'] + 2),
             '-' * (format_length['longitude'] + 2),
@@ -866,18 +902,18 @@ if args.read_only:
         )
     )
     # print header
-    printHeader(header_line.format(page_no = page_no, page_all = page_all))
+    printHeader(header_line.format(page_no=page_no, page_all=page_all))
     # print no files found if we have no files
     if not work_files:
         print("{:<60}".format('[!!!] No files found'))
 # now we just loop through each file and work on them
 for xmp_file in work_files:
     if not args.read_only:
-        print("---> {}: ".format(xmp_file), end = '')
-    #### ACTION FLAGs
+        print("---> {}: ".format(xmp_file), end='')
+    # ### ACTION FLAGs
     write_file = False
     lightroom_data_ok = True
-    #### LIGHTROOM DB READING
+    # ### LIGHTROOM DB READING
     # read in data from DB if we uave lightroom folder
     if use_lightroom and not args.read_only:
         # get the base file name, we need this for lightroom
@@ -905,7 +941,7 @@ for xmp_file in work_files:
         if args.debug and lrdb_row:
             print("### LightroomDB: {} / {}".format(tuple(lrdb_row), lrdb_row.keys()))
 
-    #### XMP FILE READING
+    # ### XMP FILE READING
     # open file & read all into buffer
     with open(xmp_file, 'r') as fptr:
         strbuffer = fptr.read()
@@ -920,18 +956,18 @@ for xmp_file in work_files:
         if not args.unset_only or (args.unset_only and '' in data_set.values()):
             # for read only we print out the data formatted
             # headline check, do we need to print that
-            count['read'] = printHeader(header_line.format(page_no = page_no, page_all = page_all), count['read'], header_repeat)
+            count['read'] = printHeader(header_line.format(page_no=page_no, page_all=page_all), count['read'], header_repeat)
             # the data content
             print(format_line.format(
-                filename = shortenPath(xmp_file, format_length['filename'], file_only = True), # shorten from the left
-                latitude = str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']], # cut off from the right
-                longitude = str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
-                code = data_set['CountryCode'][:2].center(4), # is only 2 chars
-                country = shortenString(data_set['Country'], width = format_length['country']), # shorten from the right
-                state = shortenString(data_set['State'], width = format_length['state']),
-                city = shortenString(data_set['City'], width = format_length['city']),
-                location = shortenString(data_set['Location'], width = format_length['location']),
-                path = shortenPath(xmp_file, format_length['path'], path_only = True)
+                filename=shortenPath(xmp_file, format_length['filename'], file_only=True),  # shorten from the left
+                latitude=str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']],  # cut off from the right
+                longitude=str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
+                code=data_set['CountryCode'][:2].center(4),  # is only 2 chars
+                country=shortenString(data_set['Country'], width=format_length['country']),  # shorten from the right
+                state=shortenString(data_set['State'], width=format_length['state']),
+                city=shortenString(data_set['City'], width=format_length['city']),
+                location=shortenString(data_set['Location'], width=format_length['location']),
+                path=shortenPath(xmp_file, format_length['path'], path_only=True)
             ))
             count['listed'] += 1
     else:
@@ -970,7 +1006,7 @@ for xmp_file in work_files:
                 print("### *** CACHE: {}: {}".format(cache_key, 'NO' if cache_key not in data_cache else 'YES'))
             if cache_key not in data_cache:
                 # get location from maps (google or openstreetmap)
-                maps_location = reverseGeolocate(latitude = data_set['GPSLatitude'], longitude = data_set['GPSLongitude'], map_type = map_type)
+                maps_location = reverseGeolocate(latitude=data_set['GPSLatitude'], longitude=data_set['GPSLongitude'], map_type=map_type)
                 # cache data with Lat/Long
                 data_cache[cache_key] = maps_location
             else:
@@ -991,7 +1027,7 @@ for xmp_file in work_files:
                 if write_file:
                     count['map'] += 1
             else:
-                print("(!) Could not geo loaction data ", end = '')
+                print("(!) Could not geo loaction data ", end='')
                 failed = True
         else:
             if args.debug:
@@ -1003,7 +1039,7 @@ for xmp_file in work_files:
                     # if not the same (to original data) and passes overwrite check
                     if data_set[key] != data_set_original[key] and checkOverwrite(data_set_original[key], key, args.field_controls):
                         xmp.set_property(xmp_fields[key], key, data_set[key])
-                        write_file = True;
+                        write_file = True
                 if write_file:
                     count['lightroom'] += 1
         # if we have the write flag set, write data
@@ -1016,14 +1052,14 @@ for xmp_file in work_files:
                     bk_file_counter = 1
                     # get PATH from file and look for .BK. data in this folder matching, output is sorted per BK counter key
                     for bk_file in sorted(
-                            glob.glob("{path}/{file}*.xmp".format(
-                                path = os.path.split(xmp_file)[0],
-                                file = "{}.BK.".format(os.path.splitext(os.path.split(xmp_file)[1])[0])
-                                )
-                            ),
-                            key = lambda pos: fileSortNumber(pos),
-                            reverse = True
-                        ):
+                        glob.glob("{path}/{file}*.xmp".format(
+                            path=os.path.split(xmp_file)[0],
+                            file="{}.BK.".format(os.path.splitext(os.path.split(xmp_file)[1])[0])
+                            )
+                        ),
+                        key=lambda pos: fileSortNumber(pos),
+                        reverse=True
+                    ):
                         # BK.1, etc -> get the number
                         bk_pos = fileSortNumber(bk_file)
                         if bk_pos > 0:
@@ -1039,7 +1075,7 @@ for xmp_file in work_files:
                 with open(xmp_file, 'w') as fptr:
                     fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
             else:
-                print("[TEST] Would write {} ".format(data_set, xmp_file), end = '')
+                print("[TEST] Would write {} ".format(data_set, xmp_file), end='')
             print("[UPDATED]")
             count['changed'] += 1
         elif failed:
