@@ -439,6 +439,114 @@ def fileSortNumber(file):
     m = re.match('.*\.BK\.(\d+)\.xmp$', file)
     return int(m.group(1)) if m is not None else 0
 
+
+# METHOD: outputListWidthAdjust
+# PARAMS: none
+# RETURN: format_length dictionary
+# DESC  : adjusts the size for the format length for the list output
+def outputListWidthAdjust():
+    # various string lengths
+    format_length = {
+        'filename': 35,
+        'latitude': 18,
+        'longitude': 18,
+        'code': 4,
+        'country': 15,
+        'state': 18,
+        'city': 20,
+        'location': 25,
+        'path': 40,
+    }
+    if args.compact_view:
+        reduce_percent = 40
+        # all formats are reduced to a mininum, we cut % off
+        for format_key in ['filename', 'latitude', 'longitude', 'country', 'state', 'city', 'location', 'path']:
+            format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
+    else:
+        # minimum resize size for a column
+        resize_width_min = 4
+        # the resize percent
+        # start with 10, then increase until we reach max
+        resize_percent_min = 10
+        resize_percent_max = 50
+        # abort flag so we can break out of the second loop too
+        abort = False
+        # formay key order, in which order the elements will be resized
+        format_key_order = []
+        # resize flag: 0 no, 1: make bigger, -1: make smaller
+        # change sizes for print based on terminal size
+        # NOTE: in screen or term this data might NOT be correct
+        # Current size needs the in between and left/right space data
+        current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
+        if current_columns < get_terminal_size().columns:
+            resize = 1
+            format_key_order = ['path', 'location', 'state', 'city', 'country', 'filename']
+        else:
+            resize = -1
+            format_key_order = ['latitude', 'longitude', 'path', 'country', 'state', 'city', 'location', 'filename']
+        # if we have no auto adjust
+        if resize and args.no_autoadjust:
+            # warningn if screen is too small
+            if resize == -1:
+                print("[!!!] Screen layout might be skewed. Increase Terminal width")
+            resize = 0
+        else:
+            for resize_percent in range(resize_percent_min, resize_percent_max, 10):
+                for format_key in format_key_order:
+                    resize_width = (format_length[format_key] / 100) * resize_percent
+                    # if we down size, make it negative
+                    if resize == -1:
+                        resize_width *= -1
+                    resize_width = ceil(format_length[format_key] + resize_width)
+                    # in case too small, keep old one
+                    format_length[format_key] = resize_width if resize_width > resize_width_min else format_length[format_key]
+                    # calc new width for check if we can abort
+                    current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
+                    if (resize == 1 and current_columns >= get_terminal_size().columns) or (resize == -1 and current_columns < get_terminal_size().columns):
+                        # check that we are not OVER but one under
+                        width_up = get_terminal_size().columns - current_columns - 1
+                        if (resize == 1 and width_up < 0) or (resize == -1 and width_up != 0):
+                            if format_length['path'] + width_up >= resize_width_min:
+                                format_length['path'] += width_up
+                        abort = True
+                        break
+                if abort:
+                    break
+            if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 > get_terminal_size().columns:
+                print("[!!!] Screen layout might be skewed. Increase Terminal width")
+    return format_length
+
+
+# METHOD: getBackupFileCounter
+# PARAMS: file name
+# RETURN: next counter to be used for backup
+# DESC  :
+def getBackupFileCounter(xmp_file):
+    # set to 1 for if we have no backups yet
+    bk_file_counter = 1
+    # get PATH from file and look for .BK. data in this folder matching, output is sorted per BK counter key
+    for bk_file in sorted(
+        glob.glob("{path}/{file}*.xmp".format(
+            path=os.path.split(xmp_file)[0],
+            file="{}.BK.".format(os.path.splitext(os.path.split(xmp_file)[1])[0])
+            )
+        ),
+        # custom sort key to get the backup files sorted correctly
+        key=lambda pos: fileSortNumber(pos),
+        reverse=True
+    ):
+        # BK.1, etc -> get the number
+        bk_pos = fileSortNumber(bk_file)
+        if bk_pos > 0:
+            if args.debug:
+                print("#### **** File: {}, Counter: {} -> {}".format(bk_file, bk_pos, bk_pos + 1))
+            # check if found + 1 is bigger than set, if yes, set to new bk counter
+            if bk_pos + 1 > bk_file_counter:
+                bk_file_counter = bk_pos + 1
+                break
+    # return the next correct number for backup
+    return bk_file_counter
+
 ##############################################################
 # ARGUMENT PARSNING
 ##############################################################
@@ -812,75 +920,8 @@ if args.debug:
 
 # if we have read only we print list format style
 if args.read_only:
-    # various string lengths
-    format_length = {
-        'filename': 35,
-        'latitude': 18,
-        'longitude': 18,
-        'code': 4,
-        'country': 15,
-        'state': 18,
-        'city': 20,
-        'location': 25,
-        'path': 40,
-    }
-    if args.compact_view:
-        reduce_percent = 40
-        # all formats are reduced to a mininum, we cut % off
-        for format_key in ['filename', 'latitude', 'longitude', 'country', 'state', 'city', 'location', 'path']:
-            format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
-    else:
-        # minimum resize size for a column
-        resize_width_min = 4
-        # the resize percent
-        # start with 10, then increase until we reach max
-        resize_percent_min = 10
-        resize_percent_max = 50
-        # abort flag so we can break out of the second loop too
-        abort = False
-        # formay key order, in which order the elements will be resized
-        format_key_order = []
-        # resize flag: 0 no, 1: make bigger, -1: make smaller
-        # change sizes for print based on terminal size
-        # NOTE: in screen or term this data might NOT be correct
-        # Current size needs the in between and left/right space data
-        current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
-        if current_columns < get_terminal_size().columns:
-            resize = 1
-            format_key_order = ['path', 'location', 'state', 'city', 'country', 'filename']
-        else:
-            resize = -1
-            format_key_order = ['latitude', 'longitude', 'path', 'country', 'state', 'city', 'location', 'filename']
-        # if we have no auto adjust
-        if resize and args.no_autoadjust:
-            # warningn if screen is too small
-            if resize == -1:
-                print("[!!!] Screen layout might be skewed. Increase Terminal width")
-            resize = 0
-        else:
-            for resize_percent in range(resize_percent_min, resize_percent_max, 10):
-                for format_key in format_key_order:
-                    resize_width = (format_length[format_key] / 100) * resize_percent
-                    # if we down size, make it negative
-                    if resize == -1:
-                        resize_width *= -1
-                    resize_width = ceil(format_length[format_key] + resize_width)
-                    # in case too small, keep old one
-                    format_length[format_key] = resize_width if resize_width > resize_width_min else format_length[format_key]
-                    # calc new width for check if we can abort
-                    current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
-                    if (resize == 1 and current_columns >= get_terminal_size().columns) or (resize == -1 and current_columns < get_terminal_size().columns):
-                        # check that we are not OVER but one under
-                        width_up = get_terminal_size().columns - current_columns - 1
-                        if (resize == 1 and width_up < 0) or (resize == -1 and width_up != 0):
-                            if format_length['path'] + width_up >= resize_width_min:
-                                format_length['path'] += width_up
-                        abort = True
-                        break
-                if abort:
-                    break
-            if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 > get_terminal_size().columns:
-                print("[!!!] Screen layout might be skewed. Increase Terminal width")
+    # adjust the output width for the list view
+    format_length = outputListWidthAdjust()
 
     # after how many lines do we reprint the header
     header_repeat = 50
@@ -939,40 +980,15 @@ if args.read_only:
     # print no files found if we have no files
     if not work_files:
         print("{:<60}".format('[!!!] No files found'))
+
+# ### MAIN WORK LOOP
 # now we just loop through each file and work on them
 for xmp_file in work_files:
     if not args.read_only:
         print("---> {}: ".format(xmp_file), end='')
+
     # ### ACTION FLAGs
     write_file = False
-    lightroom_data_ok = True
-    # ### LIGHTROOM DB READING
-    # read in data from DB if we uave lightroom folder
-    if use_lightroom and not args.read_only:
-        # get the base file name, we need this for lightroom
-        xmp_file_basename = os.path.splitext(os.path.split(xmp_file)[1])[0]
-        # for strict check we need to get the full path, and add / as the LR stores the last folder with /
-        if args.lightroom_strict:
-            xmp_file_path = "{}/{}".format(os.path.split(xmp_file)[0], '/')
-        # try to get this file name from the DB
-        lr_query_params = [xmp_file_basename]
-        if args.lightroom_strict:
-            lr_query_params.append(xmp_file_path)
-        cur.execute(query, lr_query_params)
-        # get the row data
-        lrdb_row = cur.fetchone()
-        # abort the read because we found more than one row
-        if cur.fetchone() is not None:
-            print("(!) Lightroom DB returned more than one more row")
-            lightroom_data_ok = False
-            count['many_found'] += 1
-        # Notify if we couldn't find one
-        elif not lrdb_row:
-            print("(!) Could not get data from Lightroom DB")
-            lightroom_data_ok = False
-            count['not_found'] += 1
-        if args.debug and lrdb_row:
-            print("### LightroomDB: {} / {}".format(tuple(lrdb_row), lrdb_row.keys()))
 
     # ### XMP FILE READING
     # open file & read all into buffer
@@ -1008,6 +1024,35 @@ for xmp_file in work_files:
             )
             count['listed'] += 1
     else:
+        # ### LR Action Flag (data ok)
+        lightroom_data_ok = True
+        # ### LIGHTROOM DB READING
+        # read in data from DB if we uave lightroom folder
+        if use_lightroom:
+            # get the base file name, we need this for lightroom
+            xmp_file_basename = os.path.splitext(os.path.split(xmp_file)[1])[0]
+            # try to get this file name from the DB
+            lr_query_params = [xmp_file_basename]
+            # for strict check we need to get the full path, and add / as the LR stores the last folder with /
+            if args.lightroom_strict:
+                xmp_file_path = "{}/{}".format(os.path.split(xmp_file)[0], '/')
+                lr_query_params.append(xmp_file_path)
+            cur.execute(query, lr_query_params)
+            # get the row data
+            lrdb_row = cur.fetchone()
+            # abort the read because we found more than one row
+            if cur.fetchone() is not None:
+                print("(!) Lightroom DB returned more than one more row")
+                lightroom_data_ok = False
+                count['many_found'] += 1
+            # Notify if we couldn't find one
+            elif not lrdb_row:
+                print("(!) Could not get data from Lightroom DB")
+                lightroom_data_ok = False
+                count['not_found'] += 1
+            if args.debug and lrdb_row:
+                print("### LightroomDB: {} / {}".format(tuple(lrdb_row), lrdb_row.keys()))
+
         # create a duplicate copy for later checking if something changed
         data_set_original = data_set.copy()
         # check if LR exists and use this to compare to XMP data
@@ -1085,27 +1130,7 @@ for xmp_file in work_files:
                 # use copyfile to create a backup copy
                 if not args.no_xmp_backup:
                     # check if there is another file with .BK. already there, if yes, get the max number and +1 it, if not set to 1
-                    # set to 1 for if we have no backups yet
-                    bk_file_counter = 1
-                    # get PATH from file and look for .BK. data in this folder matching, output is sorted per BK counter key
-                    for bk_file in sorted(
-                        glob.glob("{path}/{file}*.xmp".format(
-                            path=os.path.split(xmp_file)[0],
-                            file="{}.BK.".format(os.path.splitext(os.path.split(xmp_file)[1])[0])
-                            )
-                        ),
-                        key=lambda pos: fileSortNumber(pos),
-                        reverse=True
-                    ):
-                        # BK.1, etc -> get the number
-                        bk_pos = fileSortNumber(bk_file)
-                        if bk_pos > 0:
-                            if args.debug:
-                                print("#### **** File: {}, Counter: {} -> {}".format(bk_file, bk_pos, bk_pos + 1))
-                            # check if found + 1 is bigger than set, if yes, set to new bk counter
-                            if bk_pos + 1 > bk_file_counter:
-                                bk_file_counter = bk_pos + 1
-                                break
+                    bk_file_counter = getBackupFileCounter(xmp_file)
                     # copy to new backup file
                     copyfile(xmp_file, "{}.BK.{}{}".format(os.path.splitext(xmp_file)[0], bk_file_counter, os.path.splitext(xmp_file)[1]))
                 # write back to riginal file
