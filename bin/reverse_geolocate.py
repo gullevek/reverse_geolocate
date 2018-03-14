@@ -13,6 +13,7 @@ import argparse
 import sqlite3
 import requests
 import configparser
+import unicodedata
 # import textwrap
 import glob
 import os
@@ -368,8 +369,8 @@ def shortenPath(path, length=30, file_only=False, path_only=False):
         path = os.path.split(path)[1]
     if path_only:
         path = os.path.split(path)[0]
-    if len(path) > length:
-        path = "{} {}".format("..", path[len(path) - length:])
+    if stringLenCJK(path) > length:
+        path = "{} {}".format("..", path[stringLenCJK(path) - length:])
     return path
 
 
@@ -378,11 +379,28 @@ def shortenPath(path, length=30, file_only=False, path_only=False):
 # RETURN: shortened string
 # DESC  : shortens a string to width and attached placeholder
 def shortenString(string, width, placeholder='..'):
-    if len(str(string)) > width:
-        width -= len(placeholder)
+    # get the length with double byte charactes
+    string_len_cjk = stringLenCJK(str(string))
+    # if double byte width is too big
+    if string_len_cjk > width:
+        # substract the place holder
+        # subtract difference between double byte and character lenght
+        width -= ((string_len_cjk - len(str(string))) + len(placeholder))
+        # return string width new width
         return "{}{}".format(str(string)[:width], placeholder)
     else:
         return str(string)
+
+
+# METHOD: stringLenCJK
+# PARAMS: string
+# RETURN: length including double count for double width characters
+# DESC  : because len on string in python counts characters but we need
+#         the width count for formatting, we count two for a double byte
+#         characters
+def stringLenCJK(string):
+    """ return string len including double count for double width characters """
+    return sum(1 + (unicodedata.east_asian_width(c) in "WF") for c in string)
 
 
 # METHOD: printHeader
@@ -399,6 +417,18 @@ def printHeader(header, lines=0, header_line=0):
         print("{}".format(header))
     lines += 1
     return lines
+
+
+# METHOD: formatLen
+# PARAMS: string, format length
+# RETURN: returns adjusted format length
+# DESC  : in case of CJK characters we need to adjust the format length dynamically
+#         calculate correct length based on string given
+def formatLen(string, length):
+    # returns length udpated for string with double byte characters
+    # get string length normal, get string length including double byte characters
+    # then subtract that from the original length
+    return length - (stringLenCJK(string) - len(string))
 
 
 # METHOD: fileSortNumber
@@ -859,7 +889,9 @@ if args.read_only:
     # current page number
     page_no = 1
     # the formatted line for the output
-    format_line = " {{filename:<{}}} | {{latitude:>{}}} | {{longitude:>{}}} | {{code:<{}}} | {{country:<{}}} | {{state:<{}}} | {{city:<{}}} | {{location:<{}}} | {{path:<{}}}".format(
+    # 4 {} => final replace: data (2 pre replaces)
+    # 1 {} => length replace here
+    format_line = " {{{{filename:<{}}}}} | {{{{latitude:>{}}}}} | {{{{longitude:>{}}}}} | {{{{code:<{}}}}} | {{{{country:<{}}}}} | {{{{state:<{}}}}} | {{{{city:<{}}}}} | {{{{location:<{}}}}} | {{{{path:<{}}}}}".format(
         format_length['filename'],
         format_length['latitude'],
         format_length['longitude'],
@@ -868,7 +900,7 @@ if args.read_only:
         format_length['state'],
         format_length['city'],
         format_length['location'],
-        format_length['path']
+        "{pathlen}"  # set path len replacer variable
     )
     # header line format:
     # blank line
@@ -878,7 +910,8 @@ if args.read_only:
 {}
 {}'''.format(
         '> Page {page_no:,}/{page_all:,}',  # can later be set to something else, eg page numbers
-        format_line.format(  # the header title line
+        # pre replace path length before we add the header titles
+        format_line.format(pathlen=format_length['path']).format(  # the header title line
             filename='File'[:format_length['filename']],
             latitude='Latitude'[:format_length['latitude']],
             longitude='Longitude'[:format_length['longitude']],
@@ -959,16 +992,20 @@ for xmp_file in work_files:
             count['read'] = printHeader(header_line.format(page_no=page_no, page_all=page_all), count['read'], header_repeat)
             # the data content
             print(format_line.format(
-                filename=shortenPath(xmp_file, format_length['filename'], file_only=True),  # shorten from the left
-                latitude=str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']],  # cut off from the right
-                longitude=str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
-                code=data_set['CountryCode'][:2].center(4),  # is only 2 chars
-                country=shortenString(data_set['Country'], width=format_length['country']),  # shorten from the right
-                state=shortenString(data_set['State'], width=format_length['state']),
-                city=shortenString(data_set['City'], width=format_length['city']),
-                location=shortenString(data_set['Location'], width=format_length['location']),
-                path=shortenPath(xmp_file, format_length['path'], path_only=True)
-            ))
+                    # we need to adjust the path length to the folder name if it has double byte characters inside
+                    pathlen=formatLen(shortenPath(xmp_file, format_length['path'], path_only=True), format_length['path'])
+                ).format(
+                    filename=shortenPath(xmp_file, format_length['filename'], file_only=True),  # shorten from the left
+                    latitude=str(convertDMStoLat(data_set['GPSLatitude']))[:format_length['latitude']],  # cut off from the right
+                    longitude=str(convertDMStoLong(data_set['GPSLongitude']))[:format_length['longitude']],
+                    code=data_set['CountryCode'][:2].center(4),  # is only 2 chars
+                    country=shortenString(data_set['Country'], width=format_length['country']),  # shorten from the right
+                    state=shortenString(data_set['State'], width=format_length['state']),
+                    city=shortenString(data_set['City'], width=format_length['city']),
+                    location=shortenString(data_set['Location'], width=format_length['location']),
+                    path=shortenPath(xmp_file, format_length['path'], path_only=True)
+                )
+            )
             count['listed'] += 1
     else:
         # create a duplicate copy for later checking if something changed
