@@ -383,11 +383,18 @@ def shortenString(string, width, placeholder='..'):
     string_len_cjk = stringLenCJK(str(string))
     # if double byte width is too big
     if string_len_cjk > width:
-        # substract the place holder
-        # subtract difference between double byte and character lenght
-        width -= ((string_len_cjk - len(str(string))) + len(placeholder))
-        # return string width new width
-        return "{}{}".format(str(string)[:width], placeholder)
+        # set current length and output string
+        cur_len = 0
+        out_string = ''
+        # loop through each character
+        for char in str(string):
+            # set the current length if we add the character
+            cur_len += 2 if unicodedata.east_asian_width(char) in "WF" else 1
+            # if the new length is smaller than the output length to shorten too add the char
+            if cur_len <= (width - len(placeholder)):
+                out_string += char
+        # return string with new width and placeholder
+        return "{}{}".format(out_string, placeholder)
     else:
         return str(string)
 
