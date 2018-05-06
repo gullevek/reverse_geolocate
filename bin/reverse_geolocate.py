@@ -223,6 +223,9 @@ def reverseGeolocateGoogle(longitude, latitude):
     if response.json()['status'] == 'OK':
         # first entry for type = premise
         for entry in response.json()['results']:
+            # check here that in geometry the location type is "ROOFTOP" or "GEOMETRIC_CENTER"
+            if entry['geometry']['location_type'] == 'ROOFTOP' or entry['geometry']['location_type'] == 'GEOMETRIC_CENTER':
+                print("OK for {}".format(entry['geometry']['location_type']))
             for sub_entry in entry:
                 if sub_entry == 'types' and (
                     'premise' in entry[sub_entry] or
@@ -243,6 +246,7 @@ def reverseGeolocateGoogle(longitude, latitude):
                             # this is an array, so we need to loop through each
                             for addr in entry['address_components']:
                                 # in types check that index is in there and the location is not yet set
+                                # also check that entry is NOT in japanese
                                 if index in addr['types'] and not geolocation[loc_index]:
                                     # for country code we need to use short name, else we use long name
                                     if loc_index == 'CountryCode':
