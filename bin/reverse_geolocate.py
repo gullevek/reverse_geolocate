@@ -190,6 +190,7 @@ def reverseGeolocateOpenStreetMap(longitude, latitude):
 def reverseGeolocateGoogle(longitude, latitude):
     # init
     geolocation = reverseGeolocateInit(longitude, latitude)
+    temp_geolocation = geolocation.copy()
     if geolocation['status'] == 'ERROR':
         return geolocation
     # sensor (why?)
@@ -250,15 +251,24 @@ def reverseGeolocateGoogle(longitude, latitude):
                             # this is an array, so we need to loop through each
                             for addr in entry['address_components']:
                                 # in types check that index is in there and the location is not yet set
-                                # also check that entry is NOT in japanese
+                                # also check that entry is in LATIN based
+                                # NOTE: fallback if all are non LATIN?
                                 if index in addr['types'] and not geolocation[loc_index]:
                                     # for country code we need to use short name, else we use long name
                                     if loc_index == 'CountryCode':
                                         if onlyLatinChars(addr['short_name']):
                                             geolocation[loc_index] = addr['short_name']
+                                        elif not temp_geolocation[loc_index]:
+                                            temp_geolocation[loc_index] = addr['short_name']
                                     else:
                                         if onlyLatinChars(addr['long_name']):
                                             geolocation[loc_index] = addr['long_name']
+                                        elif not temp_geolocation[loc_index]:
+                                            temp_geolocation[loc_index] = addr['long_name']
+        # check that all in geoloaction are filled and if not fille from temp_geolocation dictionary
+        for loc_index in type_map:
+            if not geolocation[loc_index] and temp_geolocation[loc_index]:
+                geolocation[loc_index] = temp_geolocation[loc_index]
         # write OK status
         geolocation['status'] = response.json()['status']
     else:
