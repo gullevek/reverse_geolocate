@@ -28,6 +28,10 @@ from math import ceil
 # FUNCTIONS
 ##############################################################
 
+# this is for looking up if string is non latin letters
+# this is used by isLatin and onlyLatinChars
+cache_latin_letters = {}
+
 
 # ARGPARSE HELPERS
 
@@ -182,7 +186,7 @@ def reverseGeolocateOpenStreetMap(longitude, latitude):
 # RETURN: Google Maps reverse location lookup
 #         dict with location, city, state, country, country code
 #         if not fillable, entry is empty
-# SAMPLE: http://maps.googleapis.com/maps/api/geocode/json?latlng=<latitude>,<longitude>&sensor=false&key=<api key>
+# SAMPLE: http://maps.googleapis.com/maps/api/geocode/json?latlng=<latitude>,<longitude>&language=<lang>&sensor=false&key=<api key>
 def reverseGeolocateGoogle(longitude, latitude):
     # init
     geolocation = reverseGeolocateInit(longitude, latitude)
@@ -190,6 +194,8 @@ def reverseGeolocateGoogle(longitude, latitude):
         return geolocation
     # sensor (why?)
     sensor = 'false'
+    # language, so we get ascii en back
+    language = 'en'
     # request to google
     # if a google api key is used, the request has to be via https
     protocol = 'https://' if args.google_api_key else 'http://'
@@ -197,6 +203,7 @@ def reverseGeolocateGoogle(longitude, latitude):
     # build the base params
     payload = {
         'latlng': '{lat},{lon}'.format(lon=longitude, lat=latitude),
+        'language': language,
         'sensor': sensor
     }
     # if we have a google api key, add it here
@@ -223,9 +230,6 @@ def reverseGeolocateGoogle(longitude, latitude):
     if response.json()['status'] == 'OK':
         # first entry for type = premise
         for entry in response.json()['results']:
-            # check here that in geometry the location type is "ROOFTOP" or "GEOMETRIC_CENTER"
-            if entry['geometry']['location_type'] == 'ROOFTOP' or entry['geometry']['location_type'] == 'GEOMETRIC_CENTER':
-                print("OK for {}".format(entry['geometry']['location_type']))
             for sub_entry in entry:
                 if sub_entry == 'types' and (
                     'premise' in entry[sub_entry] or
@@ -250,9 +254,11 @@ def reverseGeolocateGoogle(longitude, latitude):
                                 if index in addr['types'] and not geolocation[loc_index]:
                                     # for country code we need to use short name, else we use long name
                                     if loc_index == 'CountryCode':
-                                        geolocation[loc_index] = addr['short_name']
+                                        if onlyLatinChars(addr['short_name']):
+                                            geolocation[loc_index] = addr['short_name']
                                     else:
-                                        geolocation[loc_index] = addr['long_name']
+                                        if onlyLatinChars(addr['long_name']):
+                                            geolocation[loc_index] = addr['long_name']
         # write OK status
         geolocation['status'] = response.json()['status']
     else:
@@ -412,6 +418,29 @@ def shortenString(string, width, placeholder='..'):
 def stringLenCJK(string):
     """ return string len including double count for double width characters """
     return sum(1 + (unicodedata.east_asian_width(c) in "WF") for c in string)
+
+
+# FROM: https://stackoverflow.com/a/3308844/7811993
+# METHOD: isLatin
+# PARAMS: character
+# RETURN: flagged LATIN or not char
+# DESC  : checks via the unciode class if a character is LATIN char based
+def isLatin(uchr):
+    try:
+        # if we found in the dictionary return
+        return cache_latin_letters[uchr]
+    except KeyError:
+        # find LATIN in uncide type returned and set in dictionary for this character
+        return cache_latin_letters.setdefault(uchr, 'LATIN' in unicodedata.name(uchr))
+
+
+# FROM: https://stackoverflow.com/a/3308844/7811993
+# METHOD: onlyLatinChars
+# PARAMS: string
+# RETURN: True/False for if string is LATIN char based
+# DESC  : chekcs if a string is based on LATIN chars. No for any CJK, Cyrillic, Hebrew, etc
+def onlyLatinChars(unistr):
+    return all(isLatin(uchr) for uchr in unistr if uchr.isalpha())
 
 
 # METHOD: printHeader
