@@ -983,14 +983,14 @@ if args.read_only:
     # 4 {} => final replace: data (2 pre replaces)
     # 1 {} => length replace here
     format_line = " {{{{filename:<{}}}}} | {{{{latitude:>{}}}}} | {{{{longitude:>{}}}}} | {{{{code:<{}}}}} | {{{{country:<{}}}}} | {{{{state:<{}}}}} | {{{{city:<{}}}}} | {{{{location:<{}}}}} | {{{{path:<{}}}}}".format(
-        format_length['filename'],
+        "{filenamelen}",
         format_length['latitude'],
         format_length['longitude'],
         format_length['code'],
-        format_length['country'],
-        format_length['state'],
-        format_length['city'],
-        format_length['location'],
+        "{countrylen}",
+        "{statelen}",
+        "{citylen}",
+        "{locationlen}",
         "{pathlen}"  # set path len replacer variable
     )
     # header line format:
@@ -1002,7 +1002,14 @@ if args.read_only:
 {}'''.format(
         '> Page {page_no:,}/{page_all:,}',  # can later be set to something else, eg page numbers
         # pre replace path length before we add the header titles
-        format_line.format(pathlen=format_length['path']).format(  # the header title line
+        format_line.format(
+            filenamelen=format_length['filename'],
+            countrylen=format_length['country'],
+            statelen=format_length['state'],
+            citylen=format_length['city'],
+            locationlen=format_length['location'],
+            pathlen=format_length['path']
+        ).format(  # the header title line
             filename='File'[:format_length['filename']],
             latitude='Latitude'[:format_length['latitude']],
             longitude='Longitude'[:format_length['longitude']],
@@ -1058,7 +1065,12 @@ for xmp_file in work_files:
             count['read'] = printHeader(header_line.format(page_no=page_no, page_all=page_all), count['read'], header_repeat)
             # the data content
             print(format_line.format(
-                    # we need to adjust the path length to the folder name if it has double byte characters inside
+                    # for all possible non latin fields we do adjust if it has double byte characters inside
+                    filenamelen=formatLen(shortenPath(xmp_file, format_length['filename'], file_only=True), format_length['filename']),
+                    countrylen=formatLen(shortenString(data_set['Country'], width=format_length['country']), format_length['country']),
+                    statelen=formatLen(shortenString(data_set['State'], width=format_length['state']), format_length['state']),
+                    citylen=formatLen(shortenString(data_set['City'], width=format_length['city']), format_length['city']),
+                    locationlen=formatLen(shortenString(data_set['Location'], width=format_length['location']), format_length['location']),
                     pathlen=formatLen(shortenPath(xmp_file, format_length['path'], path_only=True), format_length['path'])
                 ).format(
                     filename=shortenPath(xmp_file, format_length['filename'], file_only=True),  # shorten from the left
