@@ -1296,7 +1296,7 @@ if use_lightroom:
     lrdb.close()
 
 # end stats only if we write
-print("{}".format('=' * 39))
+print("{}".format('=' * 40))
 print("XMP Files found              : {:9,}".format(count['all']))
 if args.read_only:
     print("XMP Files listed             : {:9,}".format(count['listed']))
@@ -1313,7 +1313,7 @@ if not args.read_only:
         print("More than one found in LR    : {:9,}".format(count['many_found']))
     # if we have failed data
     if len(failed_files) > 0:
-        print("{}".format('-' * 39))
+        print("{}".format('-' * 40))
         print("Files that failed to update:")
         print("{}".format(', '.join(failed_files)))
 

@@ -26,8 +26,9 @@ reverse_geolocate.py [-h] -i
     [-x [EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]]
     [-l LIGHTROOM FOLDER] [-s]
     [-f <overwrite, location, city, state, country, countrycode>]
-    [-g GOOGLE API KEY] [-o] [-e EMIL ADDRESS] [-w]
-    [-r] [-u] [-a] [-c] [-n] [-v] [--debug] [--test]
+    [-d [FUZZY DISTANCE]] [-g GOOGLE API KEY] [-o]
+    [-e EMIL ADDRESS] [-w] [-r] [-u] [-a] [-c] [-n]
+    [-v] [--debug] [--test]
 
 ### Arguments
 
@@ -38,6 +39,7 @@ Argument | Argument Value | Description
 -l, --lightroom | Lightroom DB base folder | The folder where the .lrcat file is located. Optional, if this is set, LR values are read before any Google maps connection is done. Fills the Latitude and Longitude and the location names. Lightroom data never overwrites data already set in the XMP sidecar file. It is recommended to have Lightroom write the XMP sidecar file before this script is run
 -s, --strict | | Do strict check for Lightroom files and include the path into the check
 -f, --field | Keyword: overwrite, location, city, state, country, countrycode | In the default no data is overwritten if it is already set. With the 'overwrite' flag all data is set new from the Google Maps location data. Other arguments are each of the location fields and if set only this field will be set. This can be combined with the 'overwrite' flag to overwrite already set data
+-d, --fuzzy-cache | distance | Allow fuzzy cache lookup with either default value of 10m or an override value in m or km
 -n, --nobackup | | Do not create a backup of XMP sidecar file when it is changed
 -o, --openstreetmap | | Use OpenStreetMap instead of the default google maps
 -e, --email | email address | For OpenStreetMap with a large number of access
@@ -87,6 +89,12 @@ openstreetmapemail = <email>
 
 if no -g or -e flag is given the keys are read from the config file. If the -g or -e parameter is given it will override the one found in the config file. A new parameter can be written to this config file with -w parameter.
 
+### Cache lookups ###
+
+If the same GPS coordinate is detected no other API maps call is done. With the fuzzy-distance argument this can be further extended to certain distances for each GPS coordinate from each other. The default value is 10m and can be overriden with an value to the argument.
+
+Can be used to force cache on GPS coordinates that are very close to each other but not exactly the same.
+
 ### Google data priority
 
 Based in the JSON return data the following fields are set in order. If one can not be found for a target set, the next one below is used
@@ -123,16 +131,17 @@ order | type | target set
 After the script is done the following overview will be printed
 
 ```
-=======================================
-XMP Files found             :        57
-Updated                     :         3
-Skipped                     :        54
-New GeoLocation from Map    :         2
-GeoLocation from Cache      :         1
-Failed reverse GeoLocate    :         0
-GeoLocaction from Lightroom :         1
-No Lightroom data found     :        46
-More than one found in LR   :         0
+========================================
+XMP Files found              :        57
+Updated                      :         3
+Skipped                      :        54
+New GeoLocation from Map     :         2
+GeoLocation from Cache       :         1
+GeoLocation from Fuzzy Cache :         0
+Failed reverse GeoLocate     :         0
+GeoLocaction from Lightroom  :         1
+No Lightroom data found      :        46
+More than one found in LR    :         0
 ```
 
 If there are problems with getting data from the Google Maps API the complete errior sting will be printed
@@ -148,7 +157,7 @@ Also the files that could not be updated will be printed at the end of the run u
 
 ```
 ...
-------------------------------
+----------------------------------------
 Files that failed to update:
 Photos/2017/02/some_file.xmp
 ```
