@@ -22,7 +22,7 @@ import re
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, consts
 from shutil import copyfile, get_terminal_size
-from math import ceil
+from math import ceil, radians, sin, cos, atan2, sqrt
 
 ##############################################################
 # FUNCTIONS
@@ -68,6 +68,20 @@ class readable_dir(argparse.Action):
             setattr(namespace, self.dest, prospective_dir)
         else:
             raise argparse.ArgumentTypeError("readable_dir:{0} is not a readable dir".format(prospective_dir))
+
+
+# check distance values are valid
+class distance_values(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        m = re.match('^(\d+)\s?(m|km)$', values)
+        if m:
+            # convert to int in meters
+            values = int(m.group(1))
+            if m.group(2) == 'km':
+                values *= 1000
+            setattr(namespace, self.dest, values)
+        else:
+            raise argparse.ArgumentTypeError("distance_values:{0} is not a valid argument".format(values))
 
 
 # MAIN FUNCTIONS
@@ -275,7 +289,6 @@ def reverseGeolocateGoogle(longitude, latitude):
         geolocation['error_message'] = response.json()['error_message']
         geolocation['status'] = response.json()['status']
         print("Error in request: {} {}".format(geolocation['status'], geolocation['error_message']))
-
     # return
     return geolocation
 
@@ -341,6 +354,27 @@ def convertDMStoLat(lat_long):
 # # wrapper calls for DMS to Lat/Long: longitude
 def convertDMStoLong(lat_long):
     return longLatReg(lat_long, '0,0.0N')['longitude']
+
+
+# METHOD: getDistance
+# PARAMS: from long/lat, to long_lat
+# RETURN: distance in meters
+# DESC  : calculates the difference between two coordinates
+def getDistance(from_longitude, from_latitude, to_longitude, to_latitude):
+    # earth radius in meters
+    earth_radius = 6378137.0
+    # convert all from radians with pre convert DMS to long and to float
+    from_longitude = radians(float(convertDMStoLong(from_longitude)))
+    from_latitude = radians(float(convertDMStoLat(from_latitude)))
+    to_longitude = radians(float(convertDMStoLong(to_longitude)))
+    to_latitude = radians(float(convertDMStoLat(to_latitude)))
+    # distance from - to
+    distance_longitude = from_longitude - to_longitude
+    distance_latitude = from_latitude - to_latitude
+    # main distance calculation
+    distance = sin(distance_latitude / 2)**2 + cos(from_latitude) * cos(to_latitude) * sin(distance_longitude / 2)**2
+    distance = 2 * atan2(sqrt(distance), sqrt(1 - distance))
+    return earth_radius * distance
 
 
 # METHOD: checkOverwrite
@@ -660,6 +694,18 @@ parser.add_argument('-f', '--field',
                          'If with overwrite the field will be overwritten if already set, else it will be always skipped.'
                     )
 
+parser.add_argument('-d', '--fuzzy-cache',
+                    type=str.lower,
+                    action=distance_values,
+                    nargs='?',
+                    const='10m',  # default is 10m
+                    dest='fuzzy_distance',
+                    metavar='FUZZY DISTANCE',
+                    help='Allow fuzzy distance cache lookup. Optional distance can be given, '\
+                         'if not set default of 10m is used. '\
+                         'Allowed argument is in the format of 12m or 12km'
+                    )
+
 # Google Maps API key to overcome restrictions
 parser.add_argument('-g', '--google',
                     dest='google_api_key',
@@ -753,11 +799,12 @@ if not args.unset_only:
     args.unset_only = 0
 
 if args.debug:
-    print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, M: {osm}, G: {gp}, E: {em}, R: {read}, U: {us}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
+    print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, D: {fdist}, M: {osm}, G: {gp}, E: {em}, R: {read}, U: {us}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
         incl=args.xmp_sources,
         excl=args.exclude_sources,
         lr=args.lightroom_folder,
         fc=args.field_controls,
+        fdist=args.fuzzy_distance,
         osm=args.use_openstreetmap,
         gp=args.google_api_key,
         em=args.email,
@@ -887,6 +934,7 @@ count = {
     'read': 0,
     'map': 0,
     'cache': 0,
+    'fuzzy_cache': 0,
     'lightroom': 0,
     'changed': 0,
     'failed': 0,
@@ -1145,14 +1193,46 @@ for xmp_file in work_files:
                 has_unset = True
         if has_unset:
             # check if lat/long is in cache
-            cache_key = '{}.#.{}'.format(data_set['GPSLatitude'], data_set['GPSLongitude'])
+            cache_key = '{}#{}'.format(data_set['GPSLongitude'], data_set['GPSLatitude'])
             if args.debug:
                 print("### *** CACHE: {}: {}".format(cache_key, 'NO' if cache_key not in data_cache else 'YES'))
+            # main chache check = identical
+            # second cache level check is on distance:
+            # default distance is 10m, can be set via flag
+            # check distance to previous cache entries (reverse newest to oldest) and match before we do google lookup
             if cache_key not in data_cache:
-                # get location from maps (google or openstreetmap)
-                maps_location = reverseGeolocate(latitude=data_set['GPSLatitude'], longitude=data_set['GPSLongitude'], map_type=map_type)
-                # cache data with Lat/Long
-                data_cache[cache_key] = maps_location
+                has_fuzzy_cache = False
+                if args.fuzzy_distance:
+                    shortest_distance = args.fuzzy_distance
+                    best_match_latlong = ''
+                    # check if we have fuzzy distance, if no valid found do maps lookup
+                    for _cache_key in data_cache:
+                        # split up cache key so we can use in the distance calc method
+                        to_lat_long = _cache_key.split('#')
+                        # get the distance based on current set + cached set
+                        # print("Lookup f-long {} f-lat {} t-long {} t-lat {}".format(data_set['GPSLongitude'], data_set['GPSLatitude'], to_lat_long[0], to_lat_long[1]))
+                        distance = getDistance(from_longitude=data_set['GPSLongitude'], from_latitude=data_set['GPSLatitude'], to_longitude=to_lat_long[0], to_latitude=to_lat_long[1])
+                        if args.debug:
+                            print("### **= FUZZY CACHE: => distance: {} (m), shortest: {}".format(distance, shortest_distance))
+                        if distance <= shortest_distance:
+                            # set new distance and keep current best matching location
+                            shortest_distance = distance
+                            best_match_latlong = _cache_key
+                            has_fuzzy_cache = True
+                            if args.debug:
+                                print("### ***= FUZZY CACHE: YES => Best match: {}".format(best_match_latlong))
+                if not has_fuzzy_cache:
+                    # get location from maps (google or openstreetmap)
+                    maps_location = reverseGeolocate(latitude=data_set['GPSLatitude'], longitude=data_set['GPSLongitude'], map_type=map_type)
+                    # cache data with Lat/Long
+                    data_cache[cache_key] = maps_location
+                else:
+                    maps_location = data_cache[best_match_latlong]
+                    # cache this one, because the next one will match this one too
+                    # we don't need to loop search again for the same fuzzy location
+                    data_cache[cache_key] = maps_location
+                    count['cache'] += 1
+                    count['fuzzy_cache'] += 1
             else:
                 # load location from cache
                 maps_location = data_cache[cache_key]
@@ -1217,19 +1297,20 @@ if use_lightroom:
 
 # end stats only if we write
 print("{}".format('=' * 39))
-print("XMP Files found             : {:9,}".format(count['all']))
+print("XMP Files found              : {:9,}".format(count['all']))
 if args.read_only:
-    print("XMP Files listed            : {:9,}".format(count['listed']))
+    print("XMP Files listed             : {:9,}".format(count['listed']))
 if not args.read_only:
-    print("Updated                     : {:9,}".format(count['changed']))
-    print("Skipped                     : {:9,}".format(count['skipped']))
-    print("New GeoLocation from Map    : {:9,}".format(count['map']))
-    print("GeoLocation from Cache      : {:9,}".format(count['cache']))
-    print("Failed reverse GeoLocate    : {:9,}".format(count['failed']))
+    print("Updated                      : {:9,}".format(count['changed']))
+    print("Skipped                      : {:9,}".format(count['skipped']))
+    print("New GeoLocation from Map     : {:9,}".format(count['map']))
+    print("GeoLocation from Cache       : {:9,}".format(count['cache']))
+    print("GeoLocation from Fuzzy Cache : {:9,}".format(count['fuzzy_cache']))
+    print("Failed reverse GeoLocate     : {:9,}".format(count['failed']))
     if use_lightroom:
-        print("GeoLocaction from Lightroom : {:9,}".format(count['lightroom']))
-        print("No Lightroom data found     : {:9,}".format(count['not_found']))
-        print("More than one found in LR   : {:9,}".format(count['many_found']))
+        print("GeoLocaction from Lightroom  : {:9,}".format(count['lightroom']))
+        print("No Lightroom data found      : {:9,}".format(count['not_found']))
+        print("More than one found in LR    : {:9,}".format(count['many_found']))
     # if we have failed data
     if len(failed_files) > 0:
         print("{}".format('-' * 39))
