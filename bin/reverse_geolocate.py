@@ -1188,6 +1188,7 @@ for xmp_file in work_files:
         # run this through the overwrite checker to get unset if we have a forced overwrite
         has_unset = False
         failed = False
+        from_cache = False
         for loc in data_set_loc:
             if checkOverwrite(data_set[loc], loc, args.field_controls):
                 has_unset = True
@@ -1226,6 +1227,7 @@ for xmp_file in work_files:
                     maps_location = reverseGeolocate(latitude=data_set['GPSLatitude'], longitude=data_set['GPSLongitude'], map_type=map_type)
                     # cache data with Lat/Long
                     data_cache[cache_key] = maps_location
+                    from_cache = False
                 else:
                     maps_location = data_cache[best_match_latlong]
                     # cache this one, because the next one will match this one too
@@ -1233,10 +1235,12 @@ for xmp_file in work_files:
                     data_cache[cache_key] = maps_location
                     count['cache'] += 1
                     count['fuzzy_cache'] += 1
+                    from_cache = True
             else:
                 # load location from cache
                 maps_location = data_cache[cache_key]
                 count['cache'] += 1
+                from_cache = True
             # overwrite sets (note options check here)
             if args.debug:
                 print("### Map Location ({}): {}".format(map_type, maps_location))
@@ -1280,7 +1284,10 @@ for xmp_file in work_files:
                     fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
             else:
                 print("[TEST] Would write {} ".format(data_set, xmp_file), end='')
-            print("[UPDATED]")
+            if from_cache:
+                print("[UPDATED FROM CACHE]")
+            else:
+                print("[UPDATED]")
             count['changed'] += 1
         elif failed:
             print("[FAILED]")
