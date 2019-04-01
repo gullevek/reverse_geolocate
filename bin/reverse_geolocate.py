@@ -1102,7 +1102,11 @@ for xmp_file in work_files:
     # read fields from the XMP file and store in hash
     xmp.parse_from_str(strbuffer)
     for xmp_field in xmp_fields:
-        data_set[xmp_field] = xmp.get_property(xmp_fields[xmp_field], xmp_field)
+        # need to check if propert exist or it will the exempi routine will fail
+        if xmp.does_property_exist(xmp_fields[xmp_field], xmp_field):
+            data_set[xmp_field] = xmp.get_property(xmp_fields[xmp_field], xmp_field)
+        else:
+            data_set[xmp_field] = ''
         if args.debug:
             print("### => XMP: {}:{} => {}".format(xmp_fields[xmp_field], xmp_field, data_set[xmp_field]))
     if args.read_only:
