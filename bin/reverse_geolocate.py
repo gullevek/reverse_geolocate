@@ -238,7 +238,7 @@ def reverseGeolocateGoogle(longitude, latitude):
         'CountryCode': ['country'],
         'Country': ['country'],
         'State': ['administrative_area_level_1', 'administrative_area_level_2'],
-        'City': ['locality'],
+        'City': ['locality', 'administrative_area_level_3'],
         'Location': ['sublocality_level_1', 'sublocality_level_2', 'route'],
     }
     # print("Error: {}".format(response.json()['status']))
