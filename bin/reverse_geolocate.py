@@ -748,6 +748,13 @@ parser.add_argument('-u', '--unset-only',
                     help='Only list unset XMP files'
                     )
 
+# only list unset GPS codes
+parser.add_argument('-p', '--unset-gps-only',
+                    dest='unset_gps_only',
+                    action='store_true',
+                    help='Only list unset XMP files for GPS fields'
+                    )
+
 # don't try to do auto adjust in list view
 parser.add_argument('-a', '--no-autoadjust',
                     dest='no_autoadjust',
@@ -1111,7 +1118,7 @@ for xmp_file in work_files:
             print("### => XMP: {}:{} => {}".format(xmp_fields[xmp_field], xmp_field, data_set[xmp_field]))
     if args.read_only:
         # view only if list all or if data is unset
-        if not args.unset_only or (args.unset_only and '' in data_set.values()):
+        if (not args.unset_only and not args.unset_gps_only) or (args.unset_only and '' in data_set.values()) or (args.unset_gps_only and (not data_set['GPSLatitude'] or not data_set['GPSLongitude'])):
             # for read only we print out the data formatted
             # headline check, do we need to print that
             count['read'] = printHeader(header_line.format(page_no=page_no, page_all=page_all), count['read'], header_repeat)
