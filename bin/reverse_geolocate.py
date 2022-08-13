@@ -73,7 +73,7 @@ class readable_dir(argparse.Action):
 # check distance values are valid
 class distance_values(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        m = re.match('^(\d+)\s?(m|km)$', values)
+        m = re.match(r'^(\d+)\s?(m|km)$', values)
         if m:
             # convert to int in meters
             values = int(m.group(1))
@@ -128,7 +128,7 @@ def reverseGeolocateInit(longitude, latitude):
         'error_message': ''
     }
     # error if long/lat is not valid
-    latlong_re = re.compile('^\d+\.\d+$')
+    latlong_re = re.compile(r'^\d+\.\d+$')
     if not latlong_re.match(str(longitude)) or not latlong_re.match(str(latitude)):
         geolocation['status'] = 'ERROR'
         geolocation['error_message'] = 'Latitude {} or Longitude {} are not valid'.format(latitude, longitude)
@@ -201,7 +201,7 @@ def reverseGeolocateOpenStreetMap(longitude, latitude):
 #         dict with location, city, state, country, country code
 #         if not fillable, entry is empty
 # SAMPLE: http://maps.googleapis.com/maps/api/geocode/json?latlng=<latitude>,<longitude>&language=<lang>&sensor=false&key=<api key>
-def reverseGeolocateGoogle(longitude, latitude):
+def reverseGeolocateGoogle(longitude, latitude):  # noqa: C901
     # init
     geolocation = reverseGeolocateInit(longitude, latitude)
     temp_geolocation = geolocation.copy()
@@ -328,7 +328,7 @@ def convertLongToDMS(lat_long):
 #         number used in google/lr internal
 def longLatReg(longitude, latitude):
     # regex
-    latlong_re = re.compile('^(\d+),(\d+\.\d+)([NESW]{1})$')
+    latlong_re = re.compile(r'^(\d+),(\d+\.\d+)([NESW]{1})$')
     # dict for loop
     lat_long = {
         'longitude': longitude,
@@ -520,7 +520,7 @@ def formatLen(string, length):
 # RETURN: number found in the BK string or 0 for none
 # DESC  : gets the BK number for sorting in the file list
 def fileSortNumber(file):
-    m = re.match('.*\.BK\.(\d+)\.xmp$', file)
+    m = re.match(r'.*\.BK\.(\d+)\.xmp$', file)
     return int(m.group(1)) if m is not None else 0
 
 
@@ -844,7 +844,7 @@ if args.email and not args.use_openstreetmap:
     error = True
 # if email and not basic valid email (@ .)
 if args.email:
-    if not re.match('^.+@.+\.[A-Za-z]{1,}$', args.email):
+    if not re.match(r'^.+@.+\.[A-Za-z]{1,}$', args.email):
         print("Not a valid email for OpenStreetMap: {}".format(args.email))
         error = True
 # on error exit here
@@ -987,6 +987,8 @@ if args.lightroom_folder:
         cur = lrdb.cursor()
         # flag that we have Lightroom DB
         use_lightroom = True
+    if args.debug:
+        print("### USE Lightroom {}".format(use_lightroom))
 
 # on error exit here
 if error:
@@ -1095,7 +1097,7 @@ if args.read_only:
 
 # ### MAIN WORK LOOP
 # now we just loop through each file and work on them
-for xmp_file in work_files:
+for xmp_file in work_files:  # noqa: C901
     if not args.read_only:
         print("---> {}: ".format(xmp_file), end='')
 
@@ -1294,7 +1296,7 @@ for xmp_file in work_files:
                 with open(xmp_file, 'w') as fptr:
                     fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
             else:
-                print("[TEST] Would write {} ".format(data_set, xmp_file), end='')
+                print("[TEST] Would write {} {}".format(data_set, xmp_file), end='')
             if from_cache:
                 print("[UPDATED FROM CACHE]")
             else:
