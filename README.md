@@ -4,16 +4,28 @@ Reverse GeoLocate from XMP sidecar files with optional LightRoom DB read
 
 This script will update any of the Country Code, Country, State, City and Location data that is missing in sidecard files. If a Lightroom DB is set, it will read any data from the database and fill in the fields before it tries to get the location name from google with the Latitude and Longitude found in either the XMP sidecar file or the LR database.
 
-#### Installing and setting up
+## Development Setup
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+.venv/bin/python -m pip install -U pip setuptools wheel
+```
+
+Then install the requests and python-xmp-toolkit modules from below
+
+## Installing and setting up
 
 The script uses the following external non defauly python libraries
+
 * xmp toolkit
 * requests
 
 install both with the pip3 command
-```
-pip3 install requests
-pip3 install python-xmp-toolkit
+
+```sh
+pip install requests
+pip install python-xmp-toolkit
 ```
 
 XMP Toolkit also needs the [Exempi Library](http://libopenraw.freedesktop.org/wiki/Exempi). This one can be install via brew or macports directly.
