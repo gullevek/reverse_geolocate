@@ -644,144 +644,178 @@ parser = argparse.ArgumentParser(
 
 # xmp folder (or folders), or file (or files)
 # note that the target directory or file needs to be writeable
-parser.add_argument('-i', '--include-source',
-                    required=True,
-                    nargs='*',
-                    action=writable_dir_folder,
-                    dest='xmp_sources',
-                    metavar='XMP SOURCE FOLDER',
-                    help='The source folder or folders with the XMP files that need reverse geo encoding to be set. Single XMP files can be given here'
-                    )
+parser.add_argument(
+    '-i',
+    '--include-source',
+    required=True,
+    nargs='*',
+    action=writable_dir_folder,
+    dest='xmp_sources',
+    metavar='XMP SOURCE FOLDER',
+    help='The source folder or folders with the XMP files that need reverse geo encoding to be set. Single XMP files can be given here'
+)
 # exclude folders
-parser.add_argument('-x', '--exclude-source',
-                    nargs='*',
-                    action=writable_dir_folder,
-                    dest='exclude_sources',
-                    metavar='EXCLUDE XMP SOURCE FOLDER',
-                    help='Folders and files that will be excluded.'
-                    )
+parser.add_argument(
+    '-x',
+    '--exclude-source',
+    nargs='*',
+    action=writable_dir_folder,
+    dest='exclude_sources',
+    metavar='EXCLUDE XMP SOURCE FOLDER',
+    help='Folders and files that will be excluded.'
+)
 
 # LR database (base folder)
 # get .lrcat file in this folder
-parser.add_argument('-l', '--lightroom',
-                    # required=True,
-                    action=readable_dir,
-                    dest='lightroom_folder',
-                    metavar='LIGHTROOM FOLDER',
-                    help='Lightroom catalogue base folder'
-                    )
+parser.add_argument(
+    '-l',
+    '--lightroom',
+    # required=True,
+    action=readable_dir,
+    dest='lightroom_folder',
+    metavar='LIGHTROOM FOLDER',
+    help='Lightroom catalogue base folder'
+)
 
 # strict LR check with base path next to the file base name
-parser.add_argument('-s', '--strict',
-                    dest='lightroom_strict',
-                    action='store_true',
-                    help='Do strict check for Lightroom files including Path in query'
-                    )
+parser.add_argument(
+    '-s',
+    '--strict',
+    dest='lightroom_strict',
+    action='store_true',
+    help='Do strict check for Lightroom files including Path in query'
+)
 
 # set behaviour override
 # FLAG: default: only set not filled
 # other: overwrite all or overwrite if one is missing, overwrite specifc field (as defined below)
 # fields: Location, City, State, Country, CountryCode
-parser.add_argument('-f', '--field',
-                    action='append',
-                    type=str.lower,  # make it lowercase for check
-                    choices=['overwrite', 'location', 'city', 'state', 'country', 'countrycode'],
-                    dest='field_controls',
-                    metavar='<overwrite, location, city, state, country, countrycode>',
-                    help='On default only set fields that are not set yet. Options are: '\
-                         'Overwrite (write all new), Location, City, State, Country, CountryCode. '\
-                         'Multiple can be given for combination overwrite certain fields only or set only certain fields. '\
-                         'If with overwrite the field will be overwritten if already set, else it will be always skipped.'
-                    )
+parser.add_argument(
+    '-f',
+    '--field',
+    action='append',
+    type=str.lower,  # make it lowercase for check
+    choices=['overwrite', 'location', 'city', 'state', 'country', 'countrycode'],
+    dest='field_controls',
+    metavar='<overwrite, location, city, state, country, countrycode>',
+    help='On default only set fields that are not set yet. Options are: '\
+        'Overwrite (write all new), Location, City, State, Country, CountryCode. '\
+        'Multiple can be given for combination overwrite certain fields only or set only certain fields. '\
+        'If with overwrite the field will be overwritten if already set, else it will be always skipped.'
+)
 
-parser.add_argument('-d', '--fuzzy-cache',
-                    type=str.lower,
-                    action=distance_values,
-                    nargs='?',
-                    const='10m',  # default is 10m
-                    dest='fuzzy_distance',
-                    metavar='FUZZY DISTANCE',
-                    help='Allow fuzzy distance cache lookup. Optional distance can be given, '\
-                         'if not set default of 10m is used. '\
-                         'Allowed argument is in the format of 12m or 12km'
-                    )
+parser.add_argument(
+    '-d',
+    '--fuzzy-cache',
+    type=str.lower,
+    action=distance_values,
+    nargs='?',
+    const='10m',  # default is 10m
+    dest='fuzzy_distance',
+    metavar='FUZZY DISTANCE',
+    help='Allow fuzzy distance cache lookup. Optional distance can be given, '\
+        'if not set default of 10m is used. '\
+        'Allowed argument is in the format of 12m or 12km'
+)
 
 # Google Maps API key to overcome restrictions
-parser.add_argument('-g', '--google',
-                    dest='google_api_key',
-                    metavar='GOOGLE API KEY',
-                    help='Set a Google API Maps key to overcome the default lookup limitations'
-                    )
+parser.add_argument(
+    '-g',
+    '--google',
+    dest='google_api_key',
+    metavar='GOOGLE API KEY',
+    help='Set a Google API Maps key to overcome the default lookup limitations'
+)
 
 # use open street maps
-parser.add_argument('-o', '--openstreetmap',
-                    dest='use_openstreetmap',
-                    action='store_true',
-                    help='Use openstreetmap instead of Google'
-                    )
+parser.add_argument(
+    '-o',
+    '--openstreetmap',
+    dest='use_openstreetmap',
+    action='store_true',
+    help='Use openstreetmap instead of Google'
+)
 
 # email of open street maps requests
-parser.add_argument('-e', '--email',
-                    dest='email',
-                    metavar='EMIL ADDRESS',
-                    help='An email address for OpenStreetMap'
-                    )
+parser.add_argument(
+    '-e',
+    '--email',
+    dest='email',
+    metavar='EMIL ADDRESS',
+    help='An email address for OpenStreetMap'
+)
 
 # write api/email settings to config file
-parser.add_argument('-w', '--write-settings',
-                    dest='config_write',
-                    action='store_true',
-                    help='Write Google API or OpenStreetMap email to config file'
-                    )
+parser.add_argument(
+    '-w',
+    '--write-settings',
+    dest='config_write',
+    action='store_true',
+    help='Write Google API or OpenStreetMap email to config file'
+)
 
 # only read data and print on screen, do not write anything
-parser.add_argument('-r', '--read-only',
-                    dest='read_only',
-                    action='store_true',
-                    help='Read current values from the XMP file only, do not read from LR or lookup any data and write back'
-                    )
+parser.add_argument(
+    '-r',
+    '--read-only',
+    dest='read_only',
+    action='store_true',
+    help='Read current values from the XMP file only, do not read from LR or lookup any data and write back'
+)
 
 # only list unset ones
-parser.add_argument('-u', '--unset-only',
-                    dest='unset_only',
-                    action='store_true',
-                    help='Only list unset XMP files'
-                    )
+parser.add_argument(
+    '-u',
+    '--unset-only',
+    dest='unset_only',
+    action='store_true',
+    help='Only list unset XMP files'
+)
 
 # only list unset GPS codes
-parser.add_argument('-p', '--unset-gps-only',
-                    dest='unset_gps_only',
-                    action='store_true',
-                    help='Only list unset XMP files for GPS fields'
-                    )
+parser.add_argument(
+    '-p',
+    '--unset-gps-only',
+    dest='unset_gps_only',
+    action='store_true',
+    help='Only list unset XMP files for GPS fields'
+)
 
 # don't try to do auto adjust in list view
-parser.add_argument('-a', '--no-autoadjust',
-                    dest='no_autoadjust',
-                    action='store_true',
-                    help='Don\'t try to auto adjust columns'
-                    )
+parser.add_argument(
+    '-a',
+    '--no-autoadjust',
+    dest='no_autoadjust',
+    action='store_true',
+    help='Don\'t try to auto adjust columns'
+)
 
 # compact view, compresses columns down to a minimum
-parser.add_argument('-c', '--compact',
-                    dest='compact_view',
-                    action='store_true',
-                    help='Very compact list view'
-                    )
+parser.add_argument(
+    '-c',
+    '--compact',
+    dest='compact_view',
+    action='store_true',
+    help='Very compact list view'
+)
 
 # Do not create backup files
-parser.add_argument('-n', '--nobackup',
-                    dest='no_xmp_backup',
-                    action='store_true',
-                    help='Do not create a backup from the XMP file'
-                    )
+parser.add_argument(
+    '-n',
+    '--nobackup',
+    dest='no_xmp_backup',
+    action='store_true',
+    help='Do not create a backup from the XMP file'
+)
 
 # verbose args for more detailed output
-parser.add_argument('-v', '--verbose',
-                    action='count',
-                    dest='verbose',
-                    help='Set verbose output level'
-                    )
+parser.add_argument(
+    '-v',
+    '--verbose',
+    action='count',
+    dest='verbose',
+    help='Set verbose output level'
+)
 
 # debug flag
 parser.add_argument('--debug', action='store_true', dest='debug', help='Set detailed debug output')
@@ -1012,8 +1046,8 @@ for xmp_file_source in args.xmp_sources:
                 # 2) file is not in exclude list
                 # 3) full folder is not in exclude list
                 if file.endswith(".xmp") and ".BK." not in file \
-                  and "{}/{}".format(root, file) not in args.exclude_sources \
-                  and root.rstrip('/') not in [x.rstrip('/') for x in args.exclude_sources]:
+                    and "{}/{}".format(root, file) not in args.exclude_sources \
+                    and root.rstrip('/') not in [x.rstrip('/') for x in args.exclude_sources]:
                     if "{}/{}".format(root, file) not in work_files:
                         work_files.append("{}/{}".format(root, file))
                         count['all'] += 1
