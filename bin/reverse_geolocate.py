@@ -729,7 +729,7 @@ def format_len(string, length):
     # get string length normal, get string length including double byte characters
     # then subtract that from the original length
     return length - (string_len_cjk(string) - len(string))
-\
+
 def file_sort_number(file):
     """
     gets the BK number for sorting in the file list
@@ -1389,65 +1389,124 @@ def main():
         # the formatted line for the output
         # 4 {} => final replace: data (2 pre replaces)
         # 1 {} => length replace here
+        # format_line = (
+        #     " {{{{filename:<{}}}}} | {{{{latitude:>{}}}}} | {{{{longitude:>{}}}}} | "
+        #     "{{{{code:<{}}}}} | {{{{country:<{}}}}} | {{{{state:<{}}}}} | {{{{city:<{}}}}} | "
+        #     "{{{{location:<{}}}}} | {{{{path:<{}}}}}"
+        # ).format(
+        #     "{filenamelen}",
+        #     format_length['latitude'],
+        #     format_length['longitude'],
+        #     format_length['code'],
+        #     "{countrylen}",
+        #     "{statelen}",
+        #     "{citylen}",
+        #     "{locationlen}",
+        #     "{pathlen}"  # set path len replacer variable
+        # )
         format_line = (
-            " {{{{filename:<{}}}}} | {{{{latitude:>{}}}}} | {{{{longitude:>{}}}}} | "
-            "{{{{code:<{}}}}} | {{{{country:<{}}}}} | {{{{state:<{}}}}} | {{{{city:<{}}}}} | "
-            "{{{{location:<{}}}}} | {{{{path:<{}}}}}"
-        ).format(
-            "{filenamelen}",
-            format_length['latitude'],
-            format_length['longitude'],
-            format_length['code'],
-            "{countrylen}",
-            "{statelen}",
-            "{citylen}",
-            "{locationlen}",
-            "{pathlen}"  # set path len replacer variable
+            " {{{{filename:<{{filenamelen}}}}}} | "
+            "{{{{latitude:>"
+            f"{format_length['latitude']}"
+            "}}}} | "
+            "{{{{longitude:>"
+            f"{format_length['longitude']}"
+            "}}}} | "
+            "{{{{code:<"
+            f"{format_length['code']}"
+            "}}}} | "
+            "{{{{country:<{{countrylen}}}}}} | "
+            "{{{{state:<{{statelen}}}}}} | "
+            "{{{{city:<{{citylen}}}}}} | "
+            "{{{{location:<{{locationlen}}}}}} | "
+            "{{{{path:<{{pathlen}}}}}}"
         )
         # header line format:
         # blank line
         # header title
         # seperator line
+        # header_line = (
+        #     # f"{'> Page {page_no:,}/{page_all:,}'}"
+        #     "{}"
+        #     "{}"
+        #     "{}"
+        # ).format(
+        #     # can later be set to something else, eg page numbers
+        #     '> Page {page_no:,}/{page_all:,}',
+        #     # pre replace path length before we add the header titles
+        #     format_line.format(
+        #         filenamelen=format_length['filename'],
+        #         countrylen=format_length['country'],
+        #         statelen=format_length['state'],
+        #         citylen=format_length['city'],
+        #         locationlen=format_length['location'],
+        #         pathlen=format_length['path']
+        #     ).format(  # the header title line
+        #         filename='File'[:format_length['filename']],
+        #         latitude='Latitude'[:format_length['latitude']],
+        #         longitude='Longitude'[:format_length['longitude']],
+        #         code='Code',
+        #         country='Country'[:format_length['country']],
+        #         state='State'[:format_length['state']],
+        #         city='City'[:format_length['city']],
+        #         location='Location'[:format_length['location']],
+        #         path='Path'[:format_length['path']]
+        #     ),
+        #     (
+        #         f"{'-' * (format_length['filename'] + 2)}+"
+        #         f"{'-' * (format_length['latitude'] + 2)}+"
+        #         f"{'-' * (format_length['longitude'] + 2)}+"
+        #         f"{'-' * (format_length['code'] + 2)}+"
+        #         f"{'-' * (format_length['country'] + 2)}+"
+        #         f"{'-' * (format_length['state'] + 2)}+"
+        #         f"{'-' * (format_length['city'] + 2)}+"
+        #         f"{'-' * (format_length['location'] + 2)}+"
+        #         f"{'-' * (format_length['path'] + 2)}"
+        #     )
+        # )
+        # pre replace path length before we add the header titles
+        header_line_2 = format_line.format(
+            filenamelen=format_length['filename'],
+            countrylen=format_length['country'],
+            statelen=format_length['state'],
+            citylen=format_length['city'],
+            locationlen=format_length['location'],
+            pathlen=format_length['path']
+        ).format(  # the header title line
+            filename='File'[:format_length['filename']],
+            latitude='Latitude'[:format_length['latitude']],
+            longitude='Longitude'[:format_length['longitude']],
+            code='Code',
+            country='Country'[:format_length['country']],
+            state='State'[:format_length['state']],
+            city='City'[:format_length['city']],
+            location='Location'[:format_length['location']],
+            path='Path'[:format_length['path']]
+        )
+        header_line_3 = (
+            f"{'-' * (format_length['filename'] + 2)}+"
+            f"{'-' * (format_length['latitude'] + 2)}+"
+            f"{'-' * (format_length['longitude'] + 2)}+"
+            f"{'-' * (format_length['code'] + 2)}+"
+            f"{'-' * (format_length['country'] + 2)}+"
+            f"{'-' * (format_length['state'] + 2)}+"
+            f"{'-' * (format_length['city'] + 2)}+"
+            f"{'-' * (format_length['location'] + 2)}+"
+            f"{'-' * (format_length['path'] + 2)}"
+        )
         header_line = (
-            "{}"
-            "{}"
-            "{}"
-        ).format(
             # can later be set to something else, eg page numbers
-            '> Page {page_no:,}/{page_all:,}',
+            "{> Page {page_no:,}/{page_all:,}}"
             # pre replace path length before we add the header titles
-            format_line.format(
-                filenamelen=format_length['filename'],
-                countrylen=format_length['country'],
-                statelen=format_length['state'],
-                citylen=format_length['city'],
-                locationlen=format_length['location'],
-                pathlen=format_length['path']
-            ).format(  # the header title line
-                filename='File'[:format_length['filename']],
-                latitude='Latitude'[:format_length['latitude']],
-                longitude='Longitude'[:format_length['longitude']],
-                code='Code',
-                country='Country'[:format_length['country']],
-                state='State'[:format_length['state']],
-                city='City'[:format_length['city']],
-                location='Location'[:format_length['location']],
-                path='Path'[:format_length['path']]
-            ),
-            "{}+{}+{}+{}+{}+{}+{}+{}+{}".format(  # the header seperator line
-                '-' * (format_length['filename'] + 2),
-                '-' * (format_length['latitude'] + 2),
-                '-' * (format_length['longitude'] + 2),
-                '-' * (format_length['code'] + 2),
-                '-' * (format_length['country'] + 2),
-                '-' * (format_length['state'] + 2),
-                '-' * (format_length['city'] + 2),
-                '-' * (format_length['location'] + 2),
-                '-' * (format_length['path'] + 2)
-            )
+            f"{header_line_2}"
+            f"{header_line_3}"
         )
         # header print class
-        header_print = ReadOnlyOutput(header_line, page_all, header_repeat)
+        header_print = ReadOnlyOutput(
+            header_line,
+            page_all,
+            header_repeat
+        )
         # print header
         # print_header(header_line.format(page_no=page_no, page_all=page_all))
         header_print.print_header()
