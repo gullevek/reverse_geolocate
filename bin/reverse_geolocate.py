@@ -27,6 +27,7 @@ from math import ceil, radians, sin, cos, atan2, sqrt
 import requests
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, consts
+# user modules below
 from utils.long_lat import convert_dms_to_lat, convert_dms_to_long, convert_lat_to_dms, convert_long_to_dms, get_distance
 from utils.reverse_geolocate import reverse_geolocate
 from utils.string_helpers import string_len_cjk, shorten_string, format_len
