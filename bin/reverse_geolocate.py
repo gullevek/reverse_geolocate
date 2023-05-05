@@ -14,7 +14,6 @@ MUST HAVE: Python XMP Toolkit (http://python-xmp-toolkit.readthedocs.io/)
 """
 
 import configparser
-import unicodedata
 # import textwrap
 import glob
 import os
@@ -23,8 +22,7 @@ import re
 import argparse
 import sqlite3
 from shutil import copyfile, get_terminal_size
-from math import ceil, radians, sin, cos, atan2, sqrt
-import requests
+from math import ceil
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, consts
 # user modules below
