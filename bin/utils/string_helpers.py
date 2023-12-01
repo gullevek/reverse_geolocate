@@ -8,7 +8,8 @@ import unicodedata
 # this is used by isLatin and onlyLatinChars
 cache_latin_letters = {}
 
-def shorten_string(string, width, placeholder='..'):
+
+def shorten_string(string, width, placeholder=".."):
     """
     shortens a string to width and attached placeholder
 
@@ -26,7 +27,7 @@ def shorten_string(string, width, placeholder='..'):
     if string_length_cjk > width:
         # set current length and output string
         cur_len = 0
-        out_string = ''
+        out_string = ""
         # loop through each character
         for char in str(string):
             # set the current length if we add the character
@@ -38,6 +39,7 @@ def shorten_string(string, width, placeholder='..'):
         return f"{out_string}{placeholder}"
     else:
         return str(string)
+
 
 def string_len_cjk(string):
     """
@@ -52,6 +54,7 @@ def string_len_cjk(string):
     """
     # return string len including double count for double width characters
     return sum(1 + (unicodedata.east_asian_width(c) in "WF") for c in string)
+
 
 def is_latin(uchr):
     """
@@ -71,7 +74,8 @@ def is_latin(uchr):
         return cache_latin_letters[uchr]
     except KeyError:
         # find LATIN in uncide type returned and set in dictionary for this character
-        return cache_latin_letters.setdefault(uchr, 'LATIN' in unicodedata.name(uchr))
+        return cache_latin_letters.setdefault(uchr, "LATIN" in unicodedata.name(uchr))
+
 
 def only_latin_chars(unistr):
     """
@@ -87,6 +91,7 @@ def only_latin_chars(unistr):
         bool: True/False for if string is LATIN char based
     """
     return all(is_latin(uchr) for uchr in unistr if uchr.isalpha())
+
 
 def format_len(string, length):
     """

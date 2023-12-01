@@ -5,6 +5,7 @@ latitude/longitude functions
 import re
 from math import radians, sin, cos, atan2, sqrt
 
+
 def convert_lat_long_to_dms(lat_long, is_latitude=False, is_longitude=False):
     """
     convert the LR format of N.N to the Exif GPS format
@@ -21,12 +22,13 @@ def convert_lat_long_to_dms(lat_long, is_latitude=False, is_longitude=False):
     degree = int(abs(lat_long))
     minutes = round((float(abs(lat_long)) - int(abs(lat_long))) * 60, 10)
     if is_latitude is True:
-        direction = 'S' if int(lat_long) < 0 else 'N'
+        direction = "S" if int(lat_long) < 0 else "N"
     elif is_longitude is True:
-        direction = 'W' if int(lat_long) < 0 else 'E'
+        direction = "W" if int(lat_long) < 0 else "E"
     else:
-        direction = '(INVALID)'
+        direction = "(INVALID)"
     return f"{degree},{minutes}{direction}"
+
 
 def convert_lat_to_dms(lat_long):
     """
@@ -54,6 +56,7 @@ def convert_long_to_dms(lat_long):
     """
     return convert_lat_long_to_dms(lat_long, is_longitude=True)
 
+
 def long_lat_reg(longitude, latitude):
     """
     converts the XMP/EXIF formatted GPS Long/Lat coordinates
@@ -68,12 +71,9 @@ def long_lat_reg(longitude, latitude):
         dictionary: dict with converted lat/long
     """
     # regex
-    latlong_re = re.compile(r'^(\d+),(\d+\.\d+)([NESW]{1})$')
+    latlong_re = re.compile(r"^(\d+),(\d+\.\d+)([NESW]{1})$")
     # dict for loop
-    lat_long = {
-        'longitude': longitude,
-        'latitude': latitude
-    }
+    lat_long = {"longitude": longitude, "latitude": latitude}
     # for element in lat_long:
     for index, element in lat_long.items():
         # match if it is exif GPS format
@@ -82,9 +82,10 @@ def long_lat_reg(longitude, latitude):
             # convert from Degree, Min.Sec into float format
             lat_long[index] = float(_match.group(1)) + (float(_match.group(2)) / 60)
             # if S or W => inverse to negative
-            if _match.group(3) == 'S' or _match.group(3) == 'W':
+            if _match.group(3) == "S" or _match.group(3) == "W":
                 lat_long[index] *= -1
     return lat_long
+
 
 def convert_dms_to_lat(lat_long):
     """
@@ -96,7 +97,8 @@ def convert_dms_to_lat(lat_long):
     Returns:
         dict: dict with converted lat/long
     """
-    return long_lat_reg('0,0.0N', lat_long)['latitude']
+    return long_lat_reg("0,0.0N", lat_long)["latitude"]
+
 
 def convert_dms_to_long(lat_long):
     """
@@ -108,7 +110,8 @@ def convert_dms_to_long(lat_long):
     Returns:
         dict: dict with converted lat/long
     """
-    return long_lat_reg(lat_long, '0,0.0N')['longitude']
+    return long_lat_reg(lat_long, "0,0.0N")["longitude"]
+
 
 def get_distance(from_longitude, from_latitude, to_longitude, to_latitude):
     """
@@ -134,7 +137,8 @@ def get_distance(from_longitude, from_latitude, to_longitude, to_latitude):
     distance_longitude = from_longitude - to_longitude
     distance_latitude = from_latitude - to_latitude
     # main distance calculation
-    distance = sin(distance_latitude / 2)**2 + cos(from_latitude) * \
-        cos(to_latitude) * sin(distance_longitude / 2)**2
+    distance = (
+        sin(distance_latitude / 2) ** 2 + cos(from_latitude) * cos(to_latitude) * sin(distance_longitude / 2) ** 2
+    )
     distance = 2 * atan2(sqrt(distance), sqrt(1 - distance))
     return earth_radius * distance
