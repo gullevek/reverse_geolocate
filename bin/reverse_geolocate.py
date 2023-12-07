@@ -34,7 +34,7 @@ from utils.long_lat import (
     convert_dms_to_long,
     convert_lat_to_dms,
     convert_long_to_dms,
-    get_distance
+    get_distance,
 )
 from utils.reverse_geolocate import reverse_geolocate
 from utils.string_helpers import string_len_cjk, shorten_string, format_len
@@ -77,7 +77,9 @@ class WritableDirFolder(argparse.Action):
                     # and write that list back to the self.dest in the namespace
                     setattr(namespace, self.dest, out)
                 else:
-                    raise argparse.ArgumentTypeError(f"writable_dir_folder: {prospective_dir} is not a writable dir")
+                    raise argparse.ArgumentTypeError(
+                        f"writable_dir_folder: {prospective_dir} is not a writable dir"
+                    )
 
 
 class ReadableDir(argparse.Action):
@@ -148,7 +150,9 @@ def check_overwrite(data, key, field_controls, args):
     # init field controls for empty
     if not field_controls:
         field_controls = []
-    if not data and (len(field_controls) == 0 or ("overwrite" in field_controls and len(field_controls) == 1)):
+    if not data and (
+        len(field_controls) == 0 or ("overwrite" in field_controls and len(field_controls) == 1)
+    ):
         status = True
     elif not data and key.lower() in field_controls:
         status = True
@@ -295,7 +299,16 @@ def output_list_width_adjust(args):
     if args.compact_view:
         reduce_percent = 40
         # all formats are reduced to a mininum, we cut % off
-        for format_key in ["filename", "latitude", "longitude", "country", "state", "city", "location", "path"]:
+        for format_key in [
+            "filename",
+            "latitude",
+            "longitude",
+            "country",
+            "state",
+            "city",
+            "location",
+            "path",
+        ]:
             format_length[format_key] = ceil(
                 format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent)
             )
@@ -320,7 +333,16 @@ def output_list_width_adjust(args):
             format_key_order = ["path", "location", "state", "city", "country", "filename"]
         else:
             resize = -1
-            format_key_order = ["latitude", "longitude", "path", "country", "state", "city", "location", "filename"]
+            format_key_order = [
+                "latitude",
+                "longitude",
+                "path",
+                "country",
+                "state",
+                "city",
+                "location",
+                "filename",
+            ]
         # if we have no auto adjust
         if resize and args.no_autoadjust:
             # warningn if screen is too small
@@ -379,7 +401,9 @@ def get_backup_file_counter(xmp_file, args):
             #     path=os.path.split(xmp_file)[0],
             #     file=f"{os.path.splitext(os.path.split(xmp_file)[1])[0]}.BK."
             # )
-            os.path.join(f"{os.path.split(xmp_file)[0]}", f"{os.path.splitext(os.path.split(xmp_file)[1])[0]}.BK.*.xmp")
+            os.path.join(
+                f"{os.path.split(xmp_file)[0]}", f"{os.path.splitext(os.path.split(xmp_file)[1])[0]}.BK.*.xmp"
+            )
         ),
         # custom sort key to get the backup files sorted correctly
         key=lambda pos: file_sort_number(pos),
@@ -542,11 +566,16 @@ def argument_parser():
         "--read-only",
         dest="read_only",
         action="store_true",
-        help=("Read current values from the XMP file only, " "do not read from LR or lookup any data and write back"),
+        help=(
+            "Read current values from the XMP file only, "
+            "do not read from LR or lookup any data and write back"
+        ),
     )
 
     # only list unset ones
-    parser.add_argument("-u", "--unset-only", dest="unset_only", action="store_true", help="Only list unset XMP files")
+    parser.add_argument(
+        "-u", "--unset-only", dest="unset_only", action="store_true", help="Only list unset XMP files"
+    )
 
     # only list unset GPS codes
     parser.add_argument(
@@ -559,15 +588,25 @@ def argument_parser():
 
     # don't try to do auto adjust in list view
     parser.add_argument(
-        "-a", "--no-autoadjust", dest="no_autoadjust", action="store_true", help="Don't try to auto adjust columns"
+        "-a",
+        "--no-autoadjust",
+        dest="no_autoadjust",
+        action="store_true",
+        help="Don't try to auto adjust columns",
     )
 
     # compact view, compresses columns down to a minimum
-    parser.add_argument("-c", "--compact", dest="compact_view", action="store_true", help="Very compact list view")
+    parser.add_argument(
+        "-c", "--compact", dest="compact_view", action="store_true", help="Very compact list view"
+    )
 
     # Do not create backup files
     parser.add_argument(
-        "-n", "--nobackup", dest="no_xmp_backup", action="store_true", help="Do not create a backup from the XMP file"
+        "-n",
+        "--nobackup",
+        dest="no_xmp_backup",
+        action="store_true",
+        help="Do not create a backup from the XMP file",
     )
 
     # verbose args for more detailed output
@@ -1040,31 +1079,39 @@ def main():
                         # for all possible non latin fields we do adjust
                         # if it has double byte characters inside
                         filenamelen=format_len(
-                            shorten_path(xmp_file, format_length["filename"], file_only=True), format_length["filename"]
+                            shorten_path(xmp_file, format_length["filename"], file_only=True),
+                            format_length["filename"],
                         ),
                         countrylen=format_len(
                             shorten_string(data_set["Country"], width=format_length["country"]),
                             format_length["country"],
                         ),
                         statelen=format_len(
-                            shorten_string(data_set["State"], width=format_length["state"]), format_length["state"]
+                            shorten_string(data_set["State"], width=format_length["state"]),
+                            format_length["state"],
                         ),
                         citylen=format_len(
-                            shorten_string(data_set["City"], width=format_length["city"]), format_length["city"]
+                            shorten_string(data_set["City"], width=format_length["city"]),
+                            format_length["city"],
                         ),
                         locationlen=format_len(
                             shorten_string(data_set["Location"], width=format_length["location"]),
                             format_length["location"],
                         ),
                         pathlen=format_len(
-                            shorten_path(xmp_file, format_length["path"], path_only=True), format_length["path"]
+                            shorten_path(xmp_file, format_length["path"], path_only=True),
+                            format_length["path"],
                         ),
                     ).format(
                         # shorten from the left
                         filename=shorten_path(xmp_file, format_length["filename"], file_only=True),
                         # cut off from the right
-                        latitude=(str(convert_dms_to_lat(data_set["GPSLatitude"]))[: format_length["latitude"]]),
-                        longitude=(str(convert_dms_to_long(data_set["GPSLongitude"]))[: format_length["longitude"]]),
+                        latitude=(
+                            str(convert_dms_to_lat(data_set["GPSLatitude"]))[: format_length["latitude"]]
+                        ),
+                        longitude=(
+                            str(convert_dms_to_long(data_set["GPSLongitude"]))[: format_length["longitude"]]
+                        ),
                         # is only 2 chars
                         code=data_set["CountryCode"][:2].center(4),
                         # shorten from the right
@@ -1144,7 +1191,7 @@ def main():
                 # check if lat/long is in cache
                 cache_key = f"{data_set['GPSLongitude']}#{data_set['GPSLatitude']}"
                 if args.debug:
-                    print(f"### *** CACHE: {cache_key}: " f"{'NO' if cache_key not in data_cache else 'YES'}")
+                    print(f"### *** CACHE: {cache_key}: {'NO' if cache_key not in data_cache else 'YES'}")
                 # main chache check = identical
                 # second cache level check is on distance:
                 # default distance is 10m, can be set via flag
@@ -1182,7 +1229,7 @@ def main():
                                 best_match_latlong = _cache_key
                                 has_fuzzy_cache = True
                                 if args.debug:
-                                    print("### ***= FUZZY CACHE: YES => " f"Best match: {best_match_latlong}")
+                                    print(f"### ***= FUZZY CACHE: YES => Best match: {best_match_latlong}")
                     if not has_fuzzy_cache:
                         # get location from maps (google or openstreetmap)
                         maps_location = reverse_geolocate(
@@ -1225,7 +1272,7 @@ def main():
                     failed = True
             else:
                 if args.debug:
-                    print(f"Lightroom data use: {use_lightroom}, " f"Lightroom data ok: {lightroom_data_ok}")
+                    print(f"Lightroom data use: {use_lightroom}, Lightroom data ok: {lightroom_data_ok}")
                 # check if the data_set differs from the original (LR db load)
                 # if yes write, else skip
                 if use_lightroom and lightroom_data_ok:
@@ -1257,7 +1304,8 @@ def main():
                         # copy to new backup file
                         copyfile(
                             xmp_file,
-                            f"{os.path.splitext(xmp_file)[0]}.BK." f"{bk_file_counter}{os.path.splitext(xmp_file)[1]}",
+                            f"{os.path.splitext(xmp_file)[0]}.BK."
+                            f"{bk_file_counter}{os.path.splitext(xmp_file)[1]}",
                         )
                     # write back to riginal file
                     with open(xmp_file, "w", encoding="UTF-8") as fptr:
@@ -1283,24 +1331,24 @@ def main():
         lrdb.close()
 
     # end stats only if we write
-    print(f"{'=' * 40}")
-    print(f"XMP Files found              : {count['all']:9,}")
+    print(f"{'=' * 44}")
+    print(f"XMP Files found                  : {count['all']:9,}")
     if args.read_only:
-        print(f"XMP Files listed             : {count['listed']:9,}")
+        print(f"XMP Files listed                 : {count['listed']:9,}")
     if not args.read_only:
-        print(f"Updated                      : {count['changed']:9,}")
-        print(f"Skipped                      : {count['skipped']:9,}")
-        print(f"New GeoLocation from Map     : {count['map']:9,}")
-        print(f"GeoLocation from Cache       : {count['cache']:9,}")
-        print(f"GeoLocation from Fuzzy Cache : {count['fuzzy_cache']:9,}")
-        print(f"Failed reverse GeoLocate     : {count['failed']:9,}")
+        print(f"Updated                          : {count['changed']:9,}")
+        print(f"Skipped                          : {count['skipped']:9,}")
+        print(f"New GeoLocation from Map         : {count['map']:9,}")
+        print(f"GeoLocation from Cache           : {count['cache']:9,}")
+        print(f"GeoLocation from Fuzzy Cache     : {count['fuzzy_cache']:9,}")
+        print(f"Failed reverse GeoLocate         : {count['failed']:9,}")
         if use_lightroom:
-            print(f"GeoLocaction from Lightroom  : {count['lightroom']:9,}")
-            print(f"No Lightroom data found      : {count['not_found']:9,}")
-            print(f"More than one found in LR    : {count['many_found']:9,}")
+            print(f"GeoLocaction from Lightroom      : {count['lightroom']:9,}")
+            print(f"No Lightroom data found          : {count['not_found']:9,}")
+            print(f"More than one found in Lightroom : {count['many_found']:9,}")
         # if we have failed data
         if len(failed_files) > 0:
-            print(f"{'-' * 40}")
+            print(f"{'-' * 44}")
             print("Files that failed to update:")
             print(f"{', '.join(failed_files)}")
 

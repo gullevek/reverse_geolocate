@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 120
+[tool.black]
+# set 10 short for better formatting
+line-length = 110
+# to avoid " ... " " ... " string sets
+experimental-string-processing = true
+[tool.pylint.format]
+max-line-length = 120
+[tool.pylint.TYPECHECK]
+generated-members="utils.*"
+[tool.flake8]
+max-line-length = 120

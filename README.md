@@ -148,17 +148,17 @@ order | type | target set
 After the script is done the following overview will be printed
 
 ```txt
-========================================
-XMP Files found              :        57
-Updated                      :         3
-Skipped                      :        54
-New GeoLocation from Map     :         2
-GeoLocation from Cache       :         1
-GeoLocation from Fuzzy Cache :         0
-Failed reverse GeoLocate     :         0
-GeoLocaction from Lightroom  :         1
-No Lightroom data found      :        46
-More than one found in LR    :         0
+============================================
+XMP Files found                  :        57
+Updated                          :         3
+Skipped                          :        54
+New GeoLocation from Map         :         2
+GeoLocation from Cache           :         1
+GeoLocation from Fuzzy Cache     :         0
+Failed reverse GeoLocate         :         0
+GeoLocaction from Lightroom      :         1
+No Lightroom data found          :        46
+More than one found in Lightroom :         0
 ```
 
 If there are problems with getting data from the Google Maps API the complete errior sting will be printed
