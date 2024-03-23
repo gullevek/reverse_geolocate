@@ -10,11 +10,11 @@ This script will update any of the Country Code, Country, State, City and Locati
 python3 -m venv .venv
 source .venv/bin/activate
 .venv/bin/python -m pip install -U pip setuptools wheel
-pip freeze > pip-requirements.lst
+pip freeze > requirements.txt
 ```
 
 ```sh
-pip install -r pip-requirements.lst
+pip install -r requirements.txt
 ```
 
 Then install the requests and python-xmp-toolkit modules from below
