@@ -4,16 +4,17 @@ Reverse GeoLocate from XMP sidecar files with optional LightRoom DB read
 
 This script will update any of the Country Code, Country, State, City and Location data that is missing in sidecard files. If a Lightroom DB is set, it will read any data from the database and fill in the fields before it tries to get the location name from google with the Latitude and Longitude found in either the XMP sidecar file or the LR database.
 
-#### Installing and setting up
+## Installing and setting up
 
 The script uses the following external non defauly python libraries
+
 * xmp toolkit
 * requests
 
 install both with the pip3 command
-```
-pip3 install requests
-pip3 install python-xmp-toolkit
+
+```sh
+uv sync
 ```
 
 XMP Toolkit also needs the [Exempi Library](http://libopenraw.freedesktop.org/wiki/Exempi). This one can be install via brew or macports directly.
@@ -21,7 +22,8 @@ See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthe
 
 ## Command line arguments
 
-reverse_geolocate.py [-h] -i
+```sh
+uv run reverse-geolocate [-h] -i
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
     [-x [EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]]
     [-l LIGHTROOM FOLDER] [-s]
@@ -29,6 +31,13 @@ reverse_geolocate.py [-h] -i
     [-d [FUZZY DISTANCE]] [-g GOOGLE API KEY] [-o]
     [-e EMIL ADDRESS] [-w] [-r] [-u] [-a] [-c] [-n]
     [-v] [--debug] [--test]
+```
+
+or if outside of the project dir
+
+```sh
+uv run --project <path to project> reverse-geolocate
+```
 
 ### Arguments
 
@@ -53,26 +62,26 @@ Argument | Argument Value | Description
 --debug | | Full detailed debug output. Will print out alot of data
 --test | | Does not write any changed back to the XMP sidecar file. For testing purposes
 
-The script will created a backup of the current sidecar file named <original name>.BK.xmp in the same location as the original file.
+The script will created a backup of the current sidecar file named `<original name>.BK.xmp` in the same location as the original file.
 
 If the Lightroom lookup is used without the --strict argument and several files with the same name are found, they will be skipped for usage.
 
 #### Example
 
-```
-reverse_geolocate.py -i Photos/2017/01 -i Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
+```sh
+uv run reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
 ```
 
 Will find all XMP sidecar files in both folders *Photos/2017/01* and *Photos/2017/02* and all folder below it. Uses the Lightroom database at *LightRoom/MyCatalogue*. The script will overwrite all data, even if it is already set
 
-```
-reverse_geolocate.py -i Photos/2017/01 -i Photos/2017/02 -x Photos/2017/02/Folder\ A -x Photos/2017/01/Folder\ B/some_file.xmp -l LightRoom/MyCatalogue
+```sh
+uv run reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -x Photos/2017/02/Folder\ A -x Photos/2017/01/Folder\ B/some_file.xmp -l LightRoom/MyCatalogue
 ```
 
 Will exlucde "Photos/2017/02/Folder A" from processing. For -x also a file (including the .xmp extension) can be given.
 
-```
-reverse_geolocate.py -i Photos/2017/01/Event-01/some_photo.xmp -f location
+```sh
+uv run reverse-geolocate -i Photos/2017/01/Event-01/some_photo.xmp -f location
 ```
 
 Only works on *some_photo.xmp* file and will only set the *location* field if it is not yet set.
@@ -81,7 +90,7 @@ Only works on *some_photo.xmp* file and will only set the *location* field if it
 
 The Google Maps API key and the OpenStreetMap Email address can be written to a config file with the -w argument. The config file is located in $HOME/.config/reverseGeolocate/reverse_geolocate.cfg in the following format
 
-```
+```ini
 [API]
 googleapikey = <google api key>
 openstreetmapemail = <email>
@@ -89,7 +98,7 @@ openstreetmapemail = <email>
 
 if no -g or -e flag is given the keys are read from the config file. If the -g or -e parameter is given it will override the one found in the config file. A new parameter can be written to this config file with -w parameter.
 
-### Cache lookups ###
+### Cache lookups
 
 If the same GPS coordinate is detected no other API maps call is done. With the fuzzy-distance argument this can be further extended to certain distances for each GPS coordinate from each other. The default value is 10m and can be overriden with an value to the argument.
 
@@ -130,7 +139,7 @@ order | type | target set
 
 After the script is done the following overview will be printed
 
-```
+```txt
 ========================================
 XMP Files found              :        57
 Updated                      :         3
@@ -146,7 +155,7 @@ More than one found in LR    :         0
 
 If there are problems with getting data from the Google Maps API the complete errior sting will be printed
 
-```
+```txt
 ...
 ---> Photos/2017/02/some_file.xmp: Error in request: OVER_QUERY_LIMIT You have exceeded your daily request quota for this API. We recommend registering for a key at the Google Developers Console: https://console.developers.google.com/apis/credentials?project=_
 (!) Could not geo loaction data [FAILED]
@@ -155,7 +164,7 @@ If there are problems with getting data from the Google Maps API the complete er
 
 Also the files that could not be updated will be printed at the end of the run under the stats list
 
-```
+```txt
 ...
 ----------------------------------------
 Files that failed to update:
