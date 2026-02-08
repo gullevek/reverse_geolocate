@@ -1,13 +1,68 @@
+[project]
+name = "reverse-geolocate"
+version = "0.1.0"
+description = "Reverse Geolcate script"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "python-xmp-toolkit>=2.1.0",
+    "requests>=2.32.5",
+]
+
+# MARK: Python linting
+[tool.pyright]
+typeCheckingMode = "strict"
+reportMissingImports = "information"
+reportMissingTypeStubs = "information"
+reportUnknownMemberType = "information"
 [tool.ruff]
 line-length = 120
 [tool.black]
 # set 10 short for better formatting
 line-length = 110
 # to avoid " ... " " ... " string sets
-experimental-string-processing = true
+# experimental-string-processing = true
+preview = true
+enable-unstable-feature = ["string_processing"]
 [tool.pylint.format]
 max-line-length = 120
-[tool.pylint.TYPECHECK]
-generated-members="utils.*"
+[tool.pylint.miscellaneous]
+notes = ["FIXME", "TODO"]
+notes-rgx = '(FIXME|TODO)(\((TTD-|#)\[0-9]+\))'
 [tool.flake8]
 max-line-length = 120
+ignore = [
+    "E741", # ignore ambigious variable name
+    "W504"  # Line break occurred after a binary operator [wrong triggered by "or" in if]
+]
+[tool.pylint.MASTER]
+# this is for the tests/etc folders
+init-hook='import sys; sys.path.append("src/")'
+
+# MARK: Testing
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+
+[tool.coverage.run]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:"
+]
+exclude_also = [
+    "def __.*__\\(",
+    "def __.*\\(",
+    "def _.*\\(",
+]

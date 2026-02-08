@@ -6,7 +6,11 @@ import re
 from math import radians, sin, cos, atan2, sqrt
 
 
-def convert_lat_long_to_dms(lat_long, is_latitude=False, is_longitude=False):
+def convert_lat_long_to_dms(
+    lat_long: float,
+    is_latitude: bool = False,
+    is_longitude: bool = False
+) -> str:
     """
     convert the LR format of N.N to the Exif GPS format
 
@@ -30,7 +34,7 @@ def convert_lat_long_to_dms(lat_long, is_latitude=False, is_longitude=False):
     return f"{degree},{minutes}{direction}"
 
 
-def convert_lat_to_dms(lat_long):
+def convert_lat_to_dms(lat_long: float) -> str:
     """
     wrapper functions for Long/Lat calls: latitude
 
@@ -44,7 +48,7 @@ def convert_lat_to_dms(lat_long):
 
 
 # wrapper for Long/Lat call: longitute
-def convert_long_to_dms(lat_long):
+def convert_long_to_dms(lat_long: float) -> str:
     """
     wrapper for Long/Lat call: longitute
 
@@ -57,7 +61,7 @@ def convert_long_to_dms(lat_long):
     return convert_lat_long_to_dms(lat_long, is_longitude=True)
 
 
-def long_lat_reg(longitude, latitude):
+def long_lat_reg(longitude: str, latitude: str) -> dict[str, float] :
     """
     converts the XMP/EXIF formatted GPS Long/Lat coordinates
     from the <Degree>,<Minute.Second><NSEW> to the normal float

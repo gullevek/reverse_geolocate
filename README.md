@@ -7,30 +7,7 @@ This script will update any of the Country Code, Country, State, City and Locati
 ## Development Setup
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-.venv/bin/python -m pip install -U pip setuptools wheel
-pip freeze > requirements.txt
-```
-
-```sh
-pip install -r requirements.txt
-```
-
-Then install the requests and python-xmp-toolkit modules from below
-
-## Installing and setting up
-
-The script uses the following external non defauly python libraries
-
-* xmp toolkit
-* requests
-
-install both with the pip3 command
-
-```sh
-pip install requests
-pip install python-xmp-toolkit
+uv sync
 ```
 
 XMP Toolkit also needs the [Exempi Library](http://libopenraw.freedesktop.org/wiki/Exempi). This one can be install via brew or macports directly.
@@ -38,7 +15,8 @@ See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthe
 
 ## Command line arguments
 
-reverse_geolocate.py [-h] -i
+```sh
+uv run bin/reverse_geolocate.py [-h] -i
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
     [-x [EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]]
     [-l LIGHTROOM FOLDER] [-s]
@@ -46,6 +24,13 @@ reverse_geolocate.py [-h] -i
     [-d [FUZZY DISTANCE]] [-g GOOGLE API KEY] [-o]
     [-e EMIL ADDRESS] [-w] [-r] [-u] [-a] [-c] [-n]
     [-v] [--debug] [--test]
+```
+
+to run it from a differnt path
+
+```sh
+uv run --project <path to project> run <path to project>/reverse-geolocate.py <arguments ...>
+```
 
 ### Arguments
 
