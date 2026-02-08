@@ -20,6 +20,7 @@ import re
 import sqlite3
 from shutil import copyfile, get_terminal_size
 from math import ceil, radians, sin, cos, atan2, sqrt
+from typing import Any
 import requests
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, consts
@@ -30,7 +31,9 @@ from libxmp import XMPMeta, consts
 
 # this is for looking up if string is non latin letters
 # this is used by isLatin and onlyLatinChars
-cache_latin_letters = {}
+cache_latin_letters: dict[str, Any] = {}
+
+page_no = 1
 
 
 # ARGPARSE HELPERS
@@ -54,7 +57,9 @@ class writable_dir_folder(argparse.Action):
                 # and write that list back to the self.dest in the namespace
                 setattr(namespace, self.dest, out)
             else:
-                raise argparse.ArgumentTypeError("writable_dir_folder: {0} is not a writable dir".format(prospective_dir))
+                raise argparse.ArgumentTypeError(
+                    "writable_dir_folder: {0} is not a writable dir".format(prospective_dir)
+                )
 
 
 # call: readable_dir
@@ -90,7 +95,7 @@ class distance_values(argparse.Action):
 # PARAMS: latitude, longitude, map search target (google or openstreetmap)
 # RETURN: dict with all data (see below)
 # DESC  : wrapper to call to either the google or openstreetmap
-def reverseGeolocate(longitude, latitude, map_type):
+def reverseGeolocate(args, longitude, latitude, map_type):
     # clean up long/lat
     # they are stored with N/S/E/W if they come from an XMP
     # format: Deg,Min.Sec[NSEW]
@@ -99,9 +104,13 @@ def reverseGeolocate(longitude, latitude, map_type):
     lat_long = longLatReg(longitude=longitude, latitude=latitude)
     # which service to use
     if map_type == 'google':
-        return reverseGeolocateGoogle(lat_long['longitude'], lat_long['latitude'])
+        return reverseGeolocateGoogle(
+            args, lat_long['longitude'], lat_long['latitude']
+        )
     elif map_type == 'openstreetmap':
-        return reverseGeolocateOpenStreetMap(lat_long['longitude'], lat_long['latitude'])
+        return reverseGeolocateOpenStreetMap(
+            args, lat_long['longitude'], lat_long['latitude']
+        )
     else:
         return {
             'Country': '',
@@ -141,7 +150,7 @@ def reverseGeolocateInit(longitude, latitude):
 #         dict with locaiton, city, state, country, country code
 #         if not fillable, entry is empty
 # SAMPLE: https://nominatim.openstreetmap.org/reverse.php?format=jsonv2&lat=<latitude>&lon=<longitude>&zoom=21&accept-languge=en-US,en&
-def reverseGeolocateOpenStreetMap(longitude, latitude):
+def reverseGeolocateOpenStreetMap(args, longitude, latitude):
     # init
     geolocation = reverseGeolocateInit(longitude, latitude)
     if geolocation['status'] == 'ERROR':
@@ -201,7 +210,7 @@ def reverseGeolocateOpenStreetMap(longitude, latitude):
 #         dict with location, city, state, country, country code
 #         if not fillable, entry is empty
 # SAMPLE: http://maps.googleapis.com/maps/api/geocode/json?latlng=<latitude>,<longitude>&language=<lang>&sensor=false&key=<api key>
-def reverseGeolocateGoogle(longitude, latitude):  # noqa: C901
+def reverseGeolocateGoogle(args, longitude, latitude):  # noqa: C901
     # init
     geolocation = reverseGeolocateInit(longitude, latitude)
     temp_geolocation = geolocation.copy()
@@ -226,7 +235,7 @@ def reverseGeolocateGoogle(longitude, latitude):  # noqa: C901
         payload['key'] = args.google_api_key
     # build the full url and send it to google
     url = "{protocol}{base}".format(protocol=protocol, base=base)
-    response = requests.get(url, params=payload)
+    response = requests.get(url, params=payload, timeout=10)
     # debug output
     if args.debug:
         print("Google search for Lat: {}, Long: {} with {}".format(longitude, latitude, response.url))
@@ -385,7 +394,7 @@ def getDistance(from_longitude, from_latitude, to_longitude, to_latitude):
 #         2) data is set or not and field_control: overwrite only set
 #         3) data for key is not set, but only for key matches field_control
 #         4) data for key is set or not, but only for key matches field_control and overwrite is set
-def checkOverwrite(data, key, field_controls):
+def checkOverwrite(args, data, key, field_controls):
     status = False
     # init field controls for empty
     if not field_controls:
@@ -528,7 +537,7 @@ def fileSortNumber(file):
 # PARAMS: none
 # RETURN: format_length dictionary
 # DESC  : adjusts the size for the format length for the list output
-def outputListWidthAdjust():
+def outputListWidthAdjust(args):
     # various string lengths
     format_length = {
         'filename': 35,
@@ -545,7 +554,10 @@ def outputListWidthAdjust():
         reduce_percent = 40
         # all formats are reduced to a mininum, we cut % off
         for format_key in ['filename', 'latitude', 'longitude', 'country', 'state', 'city', 'location', 'path']:
-            format_length[format_key] = ceil(format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent))
+            format_length[format_key] = ceil(
+                format_length[format_key] -
+                ((format_length[format_key] / 100) * reduce_percent)
+            )
     else:
         # minimum resize size for a column
         resize_width_min = 4
@@ -583,10 +595,17 @@ def outputListWidthAdjust():
                         resize_width *= -1
                     resize_width = ceil(format_length[format_key] + resize_width)
                     # in case too small, keep old one
-                    format_length[format_key] = resize_width if resize_width > resize_width_min else format_length[format_key]
+                    format_length[format_key] = (
+                        resize_width
+                        if resize_width > resize_width_min
+                        else format_length[format_key]
+                    )
                     # calc new width for check if we can abort
                     current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
-                    if (resize == 1 and current_columns >= get_terminal_size().columns) or (resize == -1 and current_columns < get_terminal_size().columns):
+                    if (
+                        (resize == 1 and current_columns >= get_terminal_size().columns) or
+                        (resize == -1 and current_columns < get_terminal_size().columns)
+                    ):
                         # check that we are not OVER but one under
                         width_up = get_terminal_size().columns - current_columns - 1
                         if (resize == 1 and width_up < 0) or (resize == -1 and width_up != 0):
@@ -605,7 +624,7 @@ def outputListWidthAdjust():
 # PARAMS: file name
 # RETURN: next counter to be used for backup
 # DESC  :
-def getBackupFileCounter(xmp_file):
+def getBackupFileCounter(args, xmp_file):
     # set to 1 for if we have no backups yet
     bk_file_counter = 1
     # get PATH from file and look for .BK. data in this folder matching, output is sorted per BK counter key
@@ -635,9 +654,9 @@ def getBackupFileCounter(xmp_file):
 # ARGUMENT PARSNING
 ##############################################################
 
+
 def main():
-
-
+    """main"""
     parser = argparse.ArgumentParser(
         description='Reverse Geoencoding based on set Latitude/Longitude data in XMP files',
         # formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -700,10 +719,12 @@ def main():
         choices=['overwrite', 'location', 'city', 'state', 'country', 'countrycode'],
         dest='field_controls',
         metavar='<overwrite, location, city, state, country, countrycode>',
-        help='On default only set fields that are not set yet. Options are: '\
-            'Overwrite (write all new), Location, City, State, Country, CountryCode. '\
-            'Multiple can be given for combination overwrite certain fields only or set only certain fields. '\
+        help=(
+            'On default only set fields that are not set yet. Options are: '
+            'Overwrite (write all new), Location, City, State, Country, CountryCode. '
+            'Multiple can be given for combination overwrite certain fields only or set only certain fields. '
             'If with overwrite the field will be overwritten if already set, else it will be always skipped.'
+        )
     )
 
     parser.add_argument(
@@ -715,9 +736,11 @@ def main():
         const='10m',  # default is 10m
         dest='fuzzy_distance',
         metavar='FUZZY DISTANCE',
-        help='Allow fuzzy distance cache lookup. Optional distance can be given, '\
-            'if not set default of 10m is used. '\
+        help=(
+            'Allow fuzzy distance cache lookup. Optional distance can be given, '
+            'if not set default of 10m is used. '
             'Allowed argument is in the format of 12m or 12km'
+        )
     )
 
     # Google Maps API key to overcome restrictions
@@ -842,25 +865,30 @@ def main():
         args.unset_only = 0
 
     if args.debug:
-        print("### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, D: {fdist}, M: {osm}, G: {gp}, E: {em}, R: {read}, U: {us}, A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}".format(
-            incl=args.xmp_sources,
-            excl=args.exclude_sources,
-            lr=args.lightroom_folder,
-            fc=args.field_controls,
-            fdist=args.fuzzy_distance,
-            osm=args.use_openstreetmap,
-            gp=args.google_api_key,
-            em=args.email,
-            read=args.read_only,
-            us=args.unset_only,
-            adj=args.no_autoadjust,
-            cmp=args.compact_view,
-            nbk=args.no_xmp_backup,
-            wrc=args.config_write,
-            v=args.verbose,
-            d=args.debug,
-            t=args.test
-        ))
+        print(
+            "### ARGUMENT VARS: I: {incl}, X: {excl}, L: {lr}, F: {fc}, "
+            "D: {fdist}, M: {osm}, G: {gp}, E: {em}, R: {read}, U: {us}, "
+            "A: {adj}, C: {cmp}, N: {nbk}, W: {wrc}, V: {v}, D: {d}, T: {t}"
+            .format(
+                incl=args.xmp_sources,
+                excl=args.exclude_sources,
+                lr=args.lightroom_folder,
+                fc=args.field_controls,
+                fdist=args.fuzzy_distance,
+                osm=args.use_openstreetmap,
+                gp=args.google_api_key,
+                em=args.email,
+                read=args.read_only,
+                us=args.unset_only,
+                adj=args.no_autoadjust,
+                cmp=args.compact_view,
+                nbk=args.no_xmp_backup,
+                wrc=args.config_write,
+                v=args.verbose,
+                d=args.debug,
+                t=args.test
+            )
+        )
 
     # error flag
     error = False
@@ -1033,6 +1061,9 @@ def main():
     # init the XML meta for handling
     xmp = XMPMeta()
 
+    # if xmp_sources is None, set to empty list
+    if args.xmp_sources is None:
+        args.xmp_sources = []
     # loop through the xmp_sources (folder or files) and read in the XMP data for LAT/LONG, other data
     for xmp_file_source in args.xmp_sources:
         # if folder, open and loop
@@ -1064,14 +1095,14 @@ def main():
     # if we have read only we print list format style
     if args.read_only:
         # adjust the output width for the list view
-        format_length = outputListWidthAdjust()
+        format_length = outputListWidthAdjust(args)
 
         # after how many lines do we reprint the header
         header_repeat = 50
         # how many pages will we have
         page_all = ceil(len(work_files) / header_repeat)
         # current page number
-        page_no = 1
+        # page_no = 1
         # the formatted line for the output
         # 4 {} => final replace: data (2 pre replaces)
         # 1 {} => length replace here
@@ -1239,7 +1270,7 @@ def main():
             failed = False
             from_cache = False
             for loc in data_set_loc:
-                if checkOverwrite(data_set[loc], loc, args.field_controls):
+                if checkOverwrite(args, data_set[loc], loc, args.field_controls):
                     has_unset = True
             if has_unset:
                 # check if lat/long is in cache
@@ -1273,7 +1304,7 @@ def main():
                                     print("### ***= FUZZY CACHE: YES => Best match: {}".format(best_match_latlong))
                     if not has_fuzzy_cache:
                         # get location from maps (google or openstreetmap)
-                        maps_location = reverseGeolocate(latitude=data_set['GPSLatitude'], longitude=data_set['GPSLongitude'], map_type=map_type)
+                        maps_location = reverseGeolocate(args, latitude=data_set['GPSLatitude'], longitude=data_set['GPSLongitude'], map_type=map_type)
                         # cache data with Lat/Long
                         data_cache[cache_key] = maps_location
                         from_cache = False
@@ -1297,7 +1328,7 @@ def main():
                 if maps_location['Country']:
                     for loc in data_set_loc:
                         # only write to XMP if overwrite check passes
-                        if checkOverwrite(data_set_original[loc], loc, args.field_controls):
+                        if checkOverwrite(args, data_set_original[loc], loc, args.field_controls):
                             data_set[loc] = maps_location[loc]
                             xmp.set_property(xmp_fields[loc], loc, maps_location[loc])
                             write_file = True
@@ -1314,7 +1345,7 @@ def main():
                 if use_lightroom and lightroom_data_ok:
                     for key in data_set:
                         # if not the same (to original data) and passes overwrite check
-                        if data_set[key] != data_set_original[key] and checkOverwrite(data_set_original[key], key, args.field_controls):
+                        if data_set[key] != data_set_original[key] and checkOverwrite(args, data_set_original[key], key, args.field_controls):
                             xmp.set_property(xmp_fields[key], key, data_set[key])
                             write_file = True
                     if write_file:
@@ -1325,7 +1356,7 @@ def main():
                     # use copyfile to create a backup copy
                     if not args.no_xmp_backup:
                         # check if there is another file with .BK. already there, if yes, get the max number and +1 it, if not set to 1
-                        bk_file_counter = getBackupFileCounter(xmp_file)
+                        bk_file_counter = getBackupFileCounter(args, xmp_file)
                         # copy to new backup file
                         copyfile(xmp_file, "{}.BK.{}{}".format(os.path.splitext(xmp_file)[0], bk_file_counter, os.path.splitext(xmp_file)[1]))
                     # write back to riginal file
