@@ -29,15 +29,15 @@ from math import ceil
 from libxmp import XMPMeta, consts
 
 # user modules below
-from utils.long_lat import (
+from reverse_geolocate.utils.long_lat import (
     convert_dms_to_lat,
     convert_dms_to_long,
     convert_lat_to_dms,
     convert_long_to_dms,
     get_distance,
 )
-from utils.reverse_geolocate import reverse_geolocate
-from utils.string_helpers import string_len_cjk, shorten_string, format_len
+from reverse_geolocate.utils.reverse_geolocate import reverse_geolocate
+from reverse_geolocate.utils.string_helpers import string_len_cjk, shorten_string, format_len
 
 ##############################################################
 # FUNCTIONS
@@ -1357,6 +1357,7 @@ def main():
 # MAIN RUN
 ##############################################################
 
-main()
+if __name__ == "__main__":
+    main()
 
 # __END__

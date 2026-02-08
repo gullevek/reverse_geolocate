@@ -9,6 +9,14 @@ dependencies = [
     "requests>=2.32.5",
 ]
 
+[project.scripts]
+reverse-geolocate = "reverse_geolocate.reverse_geolocate:main"
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+
 # MARK: Python linting
 [tool.pyright]
 typeCheckingMode = "strict"

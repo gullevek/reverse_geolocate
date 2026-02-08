@@ -84,7 +84,7 @@ wheels = [
 [[package]]
 name = "reverse-geolocate"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "python-xmp-toolkit" },
     { name = "requests" },

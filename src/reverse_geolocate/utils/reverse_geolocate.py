@@ -4,8 +4,8 @@ reverse geolacte functions
 
 import re
 import requests
-from utils.long_lat import long_lat_reg
-from utils.string_helpers import only_latin_chars
+from reverse_geolocate.utils.long_lat import long_lat_reg
+from reverse_geolocate.utils.string_helpers import only_latin_chars
 
 
 def reverse_geolocate(longitude, latitude, map_type, args):

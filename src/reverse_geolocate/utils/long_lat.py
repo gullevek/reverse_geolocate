@@ -61,7 +61,7 @@ def convert_long_to_dms(lat_long: float) -> str:
     return convert_lat_long_to_dms(lat_long, is_longitude=True)
 
 
-def long_lat_reg(longitude: str, latitude: str) -> dict[str, float] :
+def long_lat_reg(longitude: str, latitude: str) -> dict[str, float]:
     """
     converts the XMP/EXIF formatted GPS Long/Lat coordinates
     from the <Degree>,<Minute.Second><NSEW> to the normal float
@@ -77,7 +77,7 @@ def long_lat_reg(longitude: str, latitude: str) -> dict[str, float] :
     # regex
     latlong_re = re.compile(r"^(\d+),(\d+\.\d+)([NESW]{1})$")
     # dict for loop
-    lat_long = {"longitude": longitude, "latitude": latitude}
+    lat_long: dict[str, str | float] = {"longitude": longitude, "latitude": latitude}
     # for element in lat_long:
     for index, element in lat_long.items():
         # match if it is exif GPS format

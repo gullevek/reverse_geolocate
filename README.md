@@ -16,7 +16,7 @@ See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthe
 ## Command line arguments
 
 ```sh
-uv run bin/reverse_geolocate.py [-h] -i
+uv run reverse-geolocate [-h] -i
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
     [-x [EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]]
     [-l LIGHTROOM FOLDER] [-s]
@@ -29,7 +29,7 @@ uv run bin/reverse_geolocate.py [-h] -i
 to run it from a differnt path
 
 ```sh
-uv run --project <path to project> run <path to project>/reverse-geolocate.py <arguments ...>
+uv run --project <path to project> reverse-geolocate <arguments ...>
 ```
 
 ### Arguments
@@ -62,19 +62,19 @@ If the Lightroom lookup is used without the --strict argument and several files 
 #### Example
 
 ```sh
-reverse_geolocate.py -i Photos/2017/01 -i Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
+uv run reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
 ```
 
 Will find all XMP sidecar files in both folders *Photos/2017/01* and *Photos/2017/02* and all folder below it. Uses the Lightroom database at *LightRoom/MyCatalogue*. The script will overwrite all data, even if it is already set
 
 ```sh
-reverse_geolocate.py -i Photos/2017/01 -i Photos/2017/02 -x Photos/2017/02/Folder\ A -x Photos/2017/01/Folder\ B/some_file.xmp -l LightRoom/MyCatalogue
+uv run reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -x Photos/2017/02/Folder\ A -x Photos/2017/01/Folder\ B/some_file.xmp -l LightRoom/MyCatalogue
 ```
 
 Will exlucde "Photos/2017/02/Folder A" from processing. For -x also a file (including the .xmp extension) can be given.
 
 ```sh
-reverse_geolocate.py -i Photos/2017/01/Event-01/some_photo.xmp -f location
+uv run reverse-geolocate -i Photos/2017/01/Event-01/some_photo.xmp -f location
 ```
 
 Only works on *some_photo.xmp* file and will only set the *location* field if it is not yet set.
