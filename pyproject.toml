@@ -15,8 +15,8 @@ reverse-geolocate = "reverse_geolocate.reverse_geolocate:main"
 # MARK: build target
 [[tool.uv.index]]
 name = "private-pypi"
-url = "https://git.gullevek.jp/api/packages/PyPI/pypi/simple/"
-publish-url = "https://git.gullevek.jp/api/packages/PyPI/pypi"
+url = "https://git.gullevek.org/api/packages/PyPI/pypi/simple/"
+publish-url = "https://git.gullevek.org/api/packages/PyPI/pypi/"
 
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
