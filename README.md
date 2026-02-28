@@ -6,15 +6,10 @@ This script will update any of the Country Code, Country, State, City and Locati
 
 ## Installing and setting up
 
-The script uses the following external non defauly python libraries
-
-* xmp toolkit
-* requests
-
-install both with the pip3 command
+Everything is setup with uv, to install the tool itself
 
 ```sh
-uv sync
+uv tool install reverse-geolocate
 ```
 
 XMP Toolkit also needs the [Exempi Library](http://libopenraw.freedesktop.org/wiki/Exempi). This one can be install via brew or macports directly.
@@ -23,7 +18,7 @@ See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthe
 ## Command line arguments
 
 ```sh
-uv run reverse-geolocate [-h] -i
+reverse-geolocate [-h] -i
     [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
     [-x [EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]]
     [-l LIGHTROOM FOLDER] [-s]
@@ -31,12 +26,6 @@ uv run reverse-geolocate [-h] -i
     [-d [FUZZY DISTANCE]] [-g GOOGLE API KEY] [-o]
     [-e EMIL ADDRESS] [-w] [-r] [-u] [-a] [-c] [-n]
     [-v] [--debug] [--test]
-```
-
-or if outside of the project dir
-
-```sh
-uv run --project <path to project> reverse-geolocate
 ```
 
 ### Arguments
@@ -69,19 +58,19 @@ If the Lightroom lookup is used without the --strict argument and several files 
 #### Example
 
 ```sh
-uv run reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
+reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -l LightRoom/MyCatalogue -f overwrite -g <API KEY>
 ```
 
 Will find all XMP sidecar files in both folders *Photos/2017/01* and *Photos/2017/02* and all folder below it. Uses the Lightroom database at *LightRoom/MyCatalogue*. The script will overwrite all data, even if it is already set
 
 ```sh
-uv run reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -x Photos/2017/02/Folder\ A -x Photos/2017/01/Folder\ B/some_file.xmp -l LightRoom/MyCatalogue
+reverse-geolocate -i Photos/2017/01 -i Photos/2017/02 -x Photos/2017/02/Folder\ A -x Photos/2017/01/Folder\ B/some_file.xmp -l LightRoom/MyCatalogue
 ```
 
 Will exlucde "Photos/2017/02/Folder A" from processing. For -x also a file (including the .xmp extension) can be given.
 
 ```sh
-uv run reverse-geolocate -i Photos/2017/01/Event-01/some_photo.xmp -f location
+reverse-geolocate -i Photos/2017/01/Event-01/some_photo.xmp -f location
 ```
 
 Only works on *some_photo.xmp* file and will only set the *location* field if it is not yet set.
