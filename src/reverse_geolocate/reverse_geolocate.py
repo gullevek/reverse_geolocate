@@ -1402,7 +1402,7 @@ def main():
         if len(failed_files) > 0:
             print("{}".format('-' * 40))
             print("Files that failed to update:")
-            print("{}".format(', '.join(failed_files)))
+            print("{}".format("\n".join(failed_files)))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 [project]
 name = "reverse-geolocate"
-version = "1.1.2.1"
+version = "1.1.2.2"
 description = "Reverse Geolocate from Lat/Long information and write location information into sidecard files"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -14,7 +14,7 @@ reverse-geolocate = "reverse_geolocate.reverse_geolocate:main"
 
 # MARK: build system
 [build-system]
-requires = ["uv_build>=0.9.7,<0.10.0"]
+requires = ["uv_build>=0.12.0,<0.13.0"]
 build-backend = "uv_build"
 
 # MARK: build target
