@@ -14,16 +14,13 @@ from . import consts as consts
 
 __version__: str
 
-__all__ = ["XMPMeta", "XMPFiles", "XMPError", "ExempiLoadError", "consts"]
-
+__all__ = ["ExempiLoadError", "XMPError", "XMPFiles", "XMPMeta", "consts"]
 
 class ExempiLoadError(Exception):
     """Error signaling that the Exempi library cannot be loaded."""
 
-
 class XMPError(Exception):
     """General XMP Error."""
-
 
 class XMPMeta:
     """XMPMeta is the class providing the core services of the library"""
@@ -42,9 +39,7 @@ class XMPMeta:
     def get_property_long(self, schema_ns: str, prop_name: str) -> int: ...
     def get_property_float(self, schema_ns: str, prop_name: str) -> float: ...
     def get_property_datetime(self, schema_ns: str, prop_name: str) -> datetime.datetime: ...
-    def get_localized_text(
-        self, schema_ns: str, alt_text_name: str, generic_lang: str, specific_lang: str
-    ) -> str: ...
+    def get_localized_text(self, schema_ns: str, alt_text_name: str, generic_lang: str, specific_lang: str) -> str: ...
     # setters, **kwargs are option flags from consts.XMP_PROP_OPTIONS
     def set_property(self, schema_ns: str, prop_name: str, prop_value: str, **kwargs: bool) -> None: ...
     def set_array_item(
@@ -100,7 +95,6 @@ class XMPMeta:
     @staticmethod
     def register_namespace(namespace_uri: str, suggested_prefix: str) -> str: ...
 
-
 class XMPIterator(Iterator[tuple[str, str, str, dict[str, bool]]]):
     """Iterates over schema and properties: yields (schema, name, value, options)"""
 
@@ -113,7 +107,6 @@ class XMPIterator(Iterator[tuple[str, str, str, dict[str, bool]]]):
     def __next__(self) -> tuple[str, str, str, dict[str, bool]]: ...
     def next(self) -> tuple[str, str, str, dict[str, bool]]: ...
     def skip(self, **kwargs: bool) -> None: ...
-
 
 class XMPFiles:
     """Low level file access (does not work with sidecar .xmp files)"""

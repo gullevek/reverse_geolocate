@@ -13,18 +13,18 @@ in a lightroom catalogue
 MUST HAVE: Python XMP Toolkit (http://python-xmp-toolkit.readthedocs.io/)
 """
 
+import argparse
 import configparser
 
 # import textwrap
 import glob
 import os
-import sys
 import re
-import argparse
 import sqlite3
-from shutil import copyfile, get_terminal_size
-from math import ceil
+import sys
 from collections.abc import Sequence
+from math import ceil
+from shutil import copyfile, get_terminal_size
 from typing import Any, cast, override
 
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
@@ -39,7 +39,7 @@ from reverse_geolocate.utils.long_lat import (
     get_distance,
 )
 from reverse_geolocate.utils.reverse_geolocate import reverse_geolocate
-from reverse_geolocate.utils.string_helpers import string_len_cjk, shorten_string, format_len
+from reverse_geolocate.utils.string_helpers import format_len, shorten_string, string_len_cjk
 
 ##############################################################
 # FUNCTIONS
@@ -210,7 +210,7 @@ def shorten_path(path: str, length: int = 30, file_only: bool = False, path_only
         return path
     # not even room for the placeholder
     if length <= len(placeholder):
-        return placeholder[:max(0, length)]
+        return placeholder[: max(0, length)]
     # available width for the path part after the placeholder
     available = max(0, length - len(placeholder))
     # collect characters from the right as long as the display width fits
@@ -395,8 +395,9 @@ def output_list_width_adjust(args: argparse.Namespace) -> dict[str, int]:
                         # check that we are not OVER but one under
                         width_up = get_terminal_size().columns - current_columns - 1
                         if (
-                            (resize == 1 and width_up < 0) or (resize == -1 and width_up != 0) and
-                            format_length["path"] + width_up >= resize_width_min
+                            (resize == 1 and width_up < 0)
+                            or (resize == -1 and width_up != 0)
+                            and format_length["path"] + width_up >= resize_width_min
                         ):
                             format_length["path"] += width_up
                         abort = True
@@ -427,9 +428,7 @@ def get_backup_file_counter(xmp_file: str, args: argparse.Namespace) -> int:
     # BK.1, etc -> get the number
     bk_number_re = re.compile(rf"\.BK\.(\d+){re.escape(extension)}$")
     bk_numbers = [
-        int(match.group(1))
-        for bk_file in glob.glob(bk_pattern)
-        if (match := bk_number_re.search(bk_file)) is not None
+        int(match.group(1)) for bk_file in glob.glob(bk_pattern) if (match := bk_number_re.search(bk_file)) is not None
     ]
     bk_file_counter = max(bk_numbers, default=0) + 1
     if args.debug:
@@ -581,16 +580,11 @@ def argument_parser():
         "--read-only",
         dest="read_only",
         action="store_true",
-        help=(
-            "Read current values from the XMP file only, "
-            "do not read from LR or lookup any data and write back"
-        ),
+        help=("Read current values from the XMP file only, do not read from LR or lookup any data and write back"),
     )
 
     # only list unset ones
-    parser.add_argument(
-        "-u", "--unset-only", dest="unset_only", action="store_true", help="Only list unset XMP files"
-    )
+    parser.add_argument("-u", "--unset-only", dest="unset_only", action="store_true", help="Only list unset XMP files")
 
     # only list unset GPS codes
     parser.add_argument(
@@ -611,9 +605,7 @@ def argument_parser():
     )
 
     # compact view, compresses columns down to a minimum
-    parser.add_argument(
-        "-c", "--compact", dest="compact_view", action="store_true", help="Very compact list view"
-    )
+    parser.add_argument("-c", "--compact", dest="compact_view", action="store_true", help="Very compact list view")
 
     # Do not create backup files
     parser.add_argument(
@@ -1042,7 +1034,9 @@ def main():
         page_all_marker = "?" if args.unset_only or args.unset_gps_only else ""
         header_line = (
             # can later be set to something else, eg page numbers
-            "> Page {page_no:,}/{page_all:,}" + page_all_marker + "\n"
+            "> Page {page_no:,}/{page_all:,}"
+            + page_all_marker
+            + "\n"
             + header_line_2.replace("{", "{{").replace("}", "}}")
             + "\n"
             + header_line_3
@@ -1136,12 +1130,8 @@ def main():
                         # shorten from the left
                         filename=shorten_path(xmp_file, format_length["filename"], file_only=True),
                         # cut off from the right
-                        latitude=(
-                            str(convert_dms_to_lat(data_set["GPSLatitude"]))[: format_length["latitude"]]
-                        ),
-                        longitude=(
-                            str(convert_dms_to_long(data_set["GPSLongitude"]))[: format_length["longitude"]]
-                        ),
+                        latitude=(str(convert_dms_to_lat(data_set["GPSLatitude"]))[: format_length["latitude"]]),
+                        longitude=(str(convert_dms_to_long(data_set["GPSLongitude"]))[: format_length["longitude"]]),
                         # is only 2 chars
                         code=data_set["CountryCode"][:2].center(4),
                         # shorten from the right
@@ -1256,8 +1246,7 @@ def main():
                             )
                             if args.debug:
                                 print(
-                                    f"### **= FUZZY CACHE: => distance: {distance} (m), "
-                                    f"shortest: {shortest_distance}"
+                                    f"### **= FUZZY CACHE: => distance: {distance} (m), shortest: {shortest_distance}"
                                 )
                             if distance <= shortest_distance:
                                 # set new distance and keep current best matching location
@@ -1340,8 +1329,7 @@ def main():
                         # copy to new backup file
                         copyfile(
                             xmp_file,
-                            f"{os.path.splitext(xmp_file)[0]}.BK."
-                            f"{bk_file_counter}{os.path.splitext(xmp_file)[1]}",
+                            f"{os.path.splitext(xmp_file)[0]}.BK.{bk_file_counter}{os.path.splitext(xmp_file)[1]}",
                         )
                     # write back to riginal file
                     with open(xmp_file, "w", encoding="UTF-8") as fptr:

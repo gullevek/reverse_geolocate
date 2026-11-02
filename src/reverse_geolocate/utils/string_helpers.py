@@ -110,4 +110,5 @@ def format_len(string: str, length: int) -> int:
     # then subtract that from the original length
     return length - (string_len_cjk(string) - len(string))
 
+
 # __END__

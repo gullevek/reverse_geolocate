@@ -3,8 +3,10 @@ reverse geolacte functions
 """
 
 import argparse
+
 import requests
-from reverse_geolocate.utils.long_lat import long_lat_reg, LongLatEntry
+
+from reverse_geolocate.utils.long_lat import LongLatEntry, long_lat_reg
 from reverse_geolocate.utils.string_helpers import only_latin_chars
 
 
@@ -64,7 +66,7 @@ def reverse_geolocate_init(longitude: float, latitude: float) -> dict[str, str]:
     # latitude must be in -90 to 90, longitude in -180 to 180
     try:
         valid = -90 <= float(latitude) <= 90 and -180 <= float(longitude) <= 180
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         valid = False
     if not valid:
         geolocation["status"] = "ERROR"
@@ -260,3 +262,6 @@ def reverse_geolocate_google(longitude: float, latitude: float, args: argparse.N
         print(f"Error in request: {geolocation['status']} {geolocation['error_message']}")
     # return
     return geolocation
+
+
+# __END__

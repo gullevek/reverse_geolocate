@@ -3,21 +3,18 @@ latitude/longitude functions
 """
 
 import re
-from math import radians, sin, cos, atan2, sqrt
+from math import atan2, cos, radians, sin, sqrt
 from typing import TypedDict
 
 
 class LongLatEntry(TypedDict):
     """For the long/lat return"""
+
     longitude: float
     latitude: float
 
 
-def convert_lat_long_to_dms(
-    lat_long: float,
-    is_latitude: bool = False,
-    is_longitude: bool = False
-) -> str:
+def convert_lat_long_to_dms(lat_long: float, is_latitude: bool = False, is_longitude: bool = False) -> str:
     """
     convert the LR format of N.N to the Exif GPS format
 
@@ -166,10 +163,11 @@ def get_distance(from_longitude: str, from_latitude: str, to_longitude: str, to_
     distance_longitude = from_long_rad - to_long_rad
     distance_latitude = from_lat_rad - to_lat_rad
     # main distance calculation
-    haversine = (
-        sin(distance_latitude / 2) ** 2 + cos(from_lat_rad) * cos(to_lat_rad) * sin(distance_longitude / 2) ** 2
-    )
+    haversine = sin(distance_latitude / 2) ** 2 + cos(from_lat_rad) * cos(to_lat_rad) * sin(distance_longitude / 2) ** 2
     # clamp, float rounding can push it slightly above 1 (antipodal points) -> sqrt of negative
     haversine = min(1.0, max(0.0, haversine))
     central_angle = 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
     return earth_radius * central_angle
+
+
+# __END__
