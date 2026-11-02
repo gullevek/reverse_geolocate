@@ -24,6 +24,8 @@ import argparse
 import sqlite3
 from shutil import copyfile, get_terminal_size
 from math import ceil
+from collections.abc import Sequence
+from typing import Any, cast, override
 
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPMeta, consts
@@ -54,21 +56,26 @@ class WritableDirFolder(argparse.Action):
     """
     checks if this is a writeable folder OR file
     AND it works on nargs *
-
-    Args:
-        argparse (_type_): _description_
+    stores a list[str] of the valid paths in the namespace
     """
 
-    def __call__(self, parser, namespace, values, option_string=None):
+    @override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
         if isinstance(values, str) or values is None:
-            print("FAIL")
+            raise argparse.ArgumentError(self, f"{values} is not a list of writable dirs or files")
         else:
             # we loop through list (this is because of nargs *)
-            for prospective_dir in iter(values):
+            for prospective_dir in values:
                 # if valid and writeable (dir or file)
                 if os.access(prospective_dir, os.W_OK):
                     # init new output array
-                    out = []
+                    out: list[str] = []
                     # if we have a previous list in the namespace extend current list
                     if isinstance(getattr(namespace, self.dest), list):
                         out.extend(getattr(namespace, self.dest))
@@ -77,126 +84,145 @@ class WritableDirFolder(argparse.Action):
                     # and write that list back to the self.dest in the namespace
                     setattr(namespace, self.dest, out)
                 else:
-                    raise argparse.ArgumentTypeError(
-                        f"writable_dir_folder: {prospective_dir} is not a writable dir"
-                    )
+                    raise argparse.ArgumentError(self, f"{prospective_dir} is not a writable dir or file")
 
 
 class ReadableDir(argparse.Action):
     """
     custom define to check if it is a valid directory
-
-    Args:
-        argparse (_type_): _description_
+    stores the path as str in the namespace
     """
 
-    def __call__(self, parser, namespace, values, option_string=None):
+    @override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
         prospective_dir = values
         if not isinstance(prospective_dir, str):
-            raise argparse.ArgumentTypeError(f"readable_dir:{prospective_dir} is not a readable dir")
+            raise argparse.ArgumentError(self, f"{prospective_dir} is not a readable dir")
         else:
             if not os.path.isdir(prospective_dir):
-                raise argparse.ArgumentTypeError(f"readable_dir:{prospective_dir} is not a valid path")
+                raise argparse.ArgumentError(self, f"{prospective_dir} is not an existing directory")
             if os.access(prospective_dir, os.R_OK):
                 setattr(namespace, self.dest, prospective_dir)
             else:
-                raise argparse.ArgumentTypeError(f"readable_dir:{prospective_dir} is not a readable dir")
+                raise argparse.ArgumentError(self, f"{prospective_dir} is not a readable dir")
 
 
 class DistanceValues(argparse.Action):
     """
-    check distance values are valid
-
-    Args:
-        argparse (_type_): _description_
+    check distance values are valid, format: <number>[ ]m|km
+    stores the distance as int in meters in the namespace
     """
 
-    def __call__(self, parser, namespace, values, option_string=None):
+    @override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str | Sequence[Any] | None,
+        option_string: str | None = None,
+    ) -> None:
         if not isinstance(values, str):
-            raise argparse.ArgumentTypeError(f"distance_values:{values} is not a valid argument")
+            raise argparse.ArgumentError(self, f"{values} is not a valid distance, use <number>m or <number>km")
         else:
             _distance = re.match(r"^(\d+)\s?(m|km)$", values)
             if _distance:
                 # convert to int in meters
-                values = int(_distance.group(1))
+                distance_meters = int(_distance.group(1))
                 if _distance.group(2) == "km":
-                    values *= 1000
-                setattr(namespace, self.dest, values)
+                    distance_meters *= 1000
+                setattr(namespace, self.dest, distance_meters)
             else:
-                raise argparse.ArgumentTypeError(f"distance_values:{values} is not a valid argument")
+                raise argparse.ArgumentError(self, f"{values} is not a valid distance, use <number>m or <number>km")
 
 
 # MAIN FUNCTIONS
 
 
-def check_overwrite(data, key, field_controls, args):
+def check_overwrite(data: str, key: str, field_controls: list[str] | None, args: argparse.Namespace) -> bool:
     """
     checks with field control flags if given data for key should be written
-        1) data is not set
-        2) data is set or not and field_control: overwrite only set
-        3) data for key is not set, but only for key matches field_control
-        4) data for key is set or not, but only for key matches field_control and overwrite is set
+        1) no field controls: write only if data is not set
+        2) only "overwrite": write always (data set or not)
+        3) only field keys: write only those keys and only if data is not set
+        4) field keys + "overwrite": write only those keys, data set or not
 
     Args:
-        data(str): value field
-        key(str): xmpt key
-        field_controls (array): array from args
-        args (_type_): _description_
+        data (str): current value of the field
+        key (str): xmp key, eg "City", compared case insensitive to the field controls
+        field_controls (list[str] | None): -f/--field values from args (None if not set)
+        args (argparse.Namespace): command line arguments (for debug flag)
 
     Returns:
-        bool: true/false
+        bool: True if the data for the key can be written
     """
-    status = False
-    # init field controls for empty
-    if not field_controls:
-        field_controls = []
-    if not data and (
-        len(field_controls) == 0 or ("overwrite" in field_controls and len(field_controls) == 1)
-    ):
-        status = True
-    elif not data and key.lower() in field_controls:
-        status = True
-    elif data and "overwrite" in field_controls and len(field_controls) == 1:
-        status = True
-    elif data and key.lower() in field_controls and "overwrite" in field_controls:
-        status = True
+    # set, so duplicate -f flags (eg -f overwrite -f overwrite) do not change the result
+    controls = set(field_controls or [])
+    overwrite = "overwrite" in controls
+    # selected fields without the overwrite flag
+    field_keys = controls - {"overwrite"}
+    key_lower = key.lower()
+    # key is selected if no fields are restricted or the key is one of them
+    key_selected = not field_keys or key_lower in field_keys
+    status = key_selected and (not data or overwrite)
     if args.debug:
         print(
             f"Data set: {'YES' if data else 'NO'}, "
-            f"Key: {key.lower()}, "
-            f"Field Controls len: {len(field_controls)}, "
-            f"Overwrite: {'OVERWRITE' if 'overwrite' in field_controls else 'NOT OVERWRITE'}, "
-            "Key in Field Controls: "
-            f"{'KEY OK' if key.lower() in field_controls else 'KEY NOT MATCHING'}, "
+            f"Key: {key_lower}, "
+            f"Field Controls: {sorted(field_keys)}, "
+            f"Overwrite: {'OVERWRITE' if overwrite else 'NOT OVERWRITE'}, "
+            f"Key in Field Controls: {'KEY OK' if key_selected else 'KEY NOT MATCHING'}, "
             f"OVERWRITE: {status}"
         )
     return status
 
 
-def shorten_path(path, length=30, file_only=False, path_only=False):
+def shorten_path(path: str, length: int = 30, file_only: bool = False, path_only: bool = False) -> str:
     """
-    shortes a path from the left so it fits into lenght
-    if file only is set to true, it will split the file, if path only is set, only the path
+    shortens a path from the left so it fits into length (display width, CJK = 2)
+    if file_only is set only the file name is used, if path_only is set only the folder
 
     Args:
-        path(str): path
-        length (int, optional): maximum length to shorten to. Defaults to 30.
-        file_only (bool, optional): only file. Defaults to False.
-        path_only (bool, optional): only path. Defaults to False.
+        path (str): path
+        length (int, optional): maximum display width to shorten to. Defaults to 30.
+        file_only (bool, optional): only use the file name. Defaults to False.
+        path_only (bool, optional): only use the folder. Defaults to False.
+
+    Raises:
+        ValueError: if file_only and path_only are both set
 
     Returns:
-        string: shortend path with ... in front
+        str: shortened path with ".. " in front if it was too long
     """
-    length = length - 3
-    # I assume the XMP file name has no CJK characters inside, so I strip out the path
-    # The reason is that if there are CJK characters inside it will screw up the formatting
+    if file_only and path_only:
+        raise ValueError("shorten_path: file_only and path_only cannot be set both")
+    placeholder = ".. "
     if file_only:
         path = os.path.split(path)[1]
-    if path_only:
+    elif path_only:
         path = os.path.split(path)[0]
-    if string_len_cjk(path) > length:
-        path = f".. {path[string_len_cjk(path) - length:]}"
-    return path
+    if string_len_cjk(path) <= length:
+        return path
+    # not even room for the placeholder
+    if length <= len(placeholder):
+        return placeholder[:max(0, length)]
+    # available width for the path part after the placeholder
+    available = max(0, length - len(placeholder))
+    # collect characters from the right as long as the display width fits
+    # (slicing by character count would be wrong for double width CJK characters)
+    width = 0
+    cut = len(path)
+    for index in range(len(path) - 1, -1, -1):
+        width += string_len_cjk(path[index])
+        if width > available:
+            break
+        cut = index
+    return f"{placeholder}{path[cut:]}"
 
 
 # def print_header(header, lines=0, header_line=0):
@@ -224,43 +250,44 @@ def shorten_path(path, length=30, file_only=False, path_only=False):
 
 class ReadOnlyOutput:
     """
-    for read only listing
+    for read only listing: prints the header block with page numbers
+    at the start and again after every header_print_line data lines
     """
 
-    page_no = 1
-    page_all = 1
-    lines = 0
-    header_print = 0
-    header_template = ""
-
-    def __init__(self, header_template, max_pages, header_print_line):
-        self.page_all = max_pages
-        self.header_template = header_template
-        self.header_print = header_print_line
-
-    def print_header(self):
+    def __init__(self, header_template: str, max_pages: int, header_print_line: int) -> None:
         """
-        prints header line and header seperator line
-
         Args:
-            header (str): header string
-            lines (int, optional): line counter. Defaults to 0.
-            header_line (int, optional): print header counter grigger. Defaults to 0.
-
-        Returns:
-            int: line counter +1
+            header_template (str): header block, with {page_no} and {page_all} placeholders
+            max_pages (int): total pages, for the page_all placeholder
+            header_print_line (int): reprint the header after this many data lines, 0 for never
         """
-        if self.lines == self.header_print:
-            # add one to the pages shown and reset the lines to start new page
-            self.page_no += 1
-            self.lines = 0
-            # print header
-            # print(f"{header}")
-            print(self.header_template.format(page_no=self.page_no, page_all=self.page_all))
+        self.header_template: str = header_template
+        self.page_all: int = max(1, max_pages)
+        self.header_print: int = header_print_line
+        # page currently shown, 0 = no header printed yet
+        self.page_no: int = 0
+        # data lines printed on the current page
+        self.lines: int = 0
+
+    def print_header(self) -> None:
+        """
+        prints the header block for the next page and starts a new page
+        """
+        self.page_no += 1
+        self.lines = 0
+        print(self.header_template.format(page_no=self.page_no, page_all=self.page_all))
+
+    def next_line(self) -> None:
+        """
+        call before each data line, prints the header if this is the first line
+        or the current page is full
+        """
+        if self.page_no == 0 or (self.header_print > 0 and self.lines >= self.header_print):
+            self.print_header()
         self.lines += 1
 
 
-def file_sort_number(file):
+def file_sort_number(file: str) -> int:
     """
     gets the BK number for sorting in the file list
 
@@ -274,18 +301,18 @@ def file_sort_number(file):
     return int(match.group(1)) if match is not None else 0
 
 
-def output_list_width_adjust(args):
+def output_list_width_adjust(args: argparse.Namespace) -> dict[str, int]:
     """
     adjusts the size for the format length for the list output
 
     Args:
-        args (_type_): arguments
+        args (argparse.Namespace): arguments
 
     Returns:
-        dictionary: format_length dictionary
+        dict[str, int]: format_length dictionary
     """
     # various string lengths
-    format_length = {
+    format_length: dict[str, int] = {
         "filename": 35,
         "latitude": 18,
         "longitude": 18,
@@ -344,11 +371,10 @@ def output_list_width_adjust(args):
                 "filename",
             ]
         # if we have no auto adjust
-        if resize and args.no_autoadjust:
+        if args.no_autoadjust:
             # warningn if screen is too small
             if resize == -1:
                 print("[!!!] Screen layout might be skewed. Increase Terminal width")
-            resize = 0
         else:
             for resize_percent in range(resize_percent_min, resize_percent_max, 10):
                 for format_key in format_key_order:
@@ -382,45 +408,32 @@ def output_list_width_adjust(args):
     return format_length
 
 
-def get_backup_file_counter(xmp_file, args):
+def get_backup_file_counter(xmp_file: str, args: argparse.Namespace) -> int:
     """
-    get backup file counter
+    get the next free backup file counter for <name>.BK.<n>.<ext>
 
     Args:
-        xmp_file (str): file name
-        args (_type_): arguments
+        xmp_file (str): xmp file name (with path)
+        args (argparse.Namespace): command line arguments (for debug flag)
 
     Returns:
-        int: next counter to be used for backup
+        int: next counter to be used for backup, highest existing + 1, or 1 if none exist
     """
-    # set to 1 for if we have no backups yet
-    bk_file_counter = 1
-    # get PATH from file and look for .BK. data in this folder matching,
-    # output is sorted per BK counter key
-    for bk_file in sorted(
-        glob.glob(
-            # "{path}/{file}*.xmp".format(
-            #     path=os.path.split(xmp_file)[0],
-            #     file=f"{os.path.splitext(os.path.split(xmp_file)[1])[0]}.BK."
-            # )
-            os.path.join(
-                f"{os.path.split(xmp_file)[0]}", f"{os.path.splitext(os.path.split(xmp_file)[1])[0]}.BK.*.xmp"
-            )
-        ),
-        # custom sort key to get the backup files sorted correctly
-        key=lambda pos: file_sort_number(pos),
-        # key=file_sort_number(),
-        reverse=True,
-    ):
-        # BK.1, etc -> get the number
-        bk_pos = file_sort_number(bk_file)
-        if bk_pos > 0:
-            if args.debug:
-                print(f"#### **** File: {bk_file}, Counter: {bk_pos} -> {bk_pos + 1}")
-            # check if found + 1 is bigger than set, if yes, set to new bk counter
-            if bk_pos + 1 > bk_file_counter:
-                bk_file_counter = bk_pos + 1
-                break
+    path, file_name = os.path.split(xmp_file)
+    stem, extension = os.path.splitext(file_name)
+    # escape the file name, so glob special characters (eg "[", "*", "?") in it are matched literally
+    # use the extension of the file itself, glob is case sensitive (.xmp vs .XMP)
+    bk_pattern = os.path.join(glob.escape(path), f"{glob.escape(stem)}.BK.*{glob.escape(extension)}")
+    # BK.1, etc -> get the number
+    bk_number_re = re.compile(rf"\.BK\.(\d+){re.escape(extension)}$")
+    bk_numbers = [
+        int(match.group(1))
+        for bk_file in glob.glob(bk_pattern)
+        if (match := bk_number_re.search(bk_file)) is not None
+    ]
+    bk_file_counter = max(bk_numbers, default=0) + 1
+    if args.debug:
+        print(f"#### **** File: {xmp_file}, Backups: {sorted(bk_numbers)}, Counter: {bk_file_counter}")
     # return the next correct number for backup
     return bk_file_counter
 
@@ -639,7 +652,9 @@ def main():
         args.verbose = 0
     # init exclude source to list if not set
     if not args.exclude_sources:
-        args.exclude_sources = []
+        # typed empty list, an untyped [] makes args.exclude_sources a list[Unknown]
+        no_exclude_sources: list[str] = []
+        args.exclude_sources = no_exclude_sources
     # init args unset (for list view) with 0 if unset
     if not args.unset_only:
         args.unset_only = 0
@@ -744,7 +759,7 @@ def main():
     # non lat/long fields (for loc loops)
     data_set_loc = ("Location", "City", "State", "Country", "CountryCode")
     # one xmp data set
-    data_set = {
+    data_set: dict[str, str] = {
         "GPSLatitude": "",
         "GPSLongitude": "",
         "Location": "",
@@ -754,9 +769,10 @@ def main():
         "CountryCode": "",
     }
     # original set for compare (is constant unchanged)
-    data_set_original = {}
-    # cache set to avoid double lookups for identical Lat/Ling
-    data_cache = {}
+    data_set_original: dict[str, str] = {}
+    # cache set to avoid double lookups for identical Lat/Long
+    # key: "<GPSLongitude>#<GPSLatitude>", value: location dict from reverse_geolocate
+    data_cache: dict[str, dict[str, str]] = {}
     # work files, all files + folders we need to work on
     work_files: list[str] = []
     # all failed files
@@ -815,18 +831,23 @@ def main():
             "AND Adobe_images.id_local = AgHarvestedExifMetadata.image "
             "AND AgLibraryFile.folder = AgLibraryFolder.id_local "
             "AND AgLibraryFolder.rootFolder = AgLibraryRootFolder.id_local "
-            "AND AgLibraryFile.baseName = ?"
+            "AND AgLibraryFile.baseName = ? "
         )
         # absolutePath + pathFromRoot = path of XMP file - XMP file
         if args.lightroom_strict:
-            query += "AND AgLibraryRootFolder.absolutePath || AgLibraryFolder.pathFromRoot = ?"
+            query += " AND AgLibraryRootFolder.absolutePath || AgLibraryFolder.pathFromRoot = ?"
 
         # connect to LR database for reading
         # open the folder and look for the first lrcat file in there
-        for file in os.listdir(args.lightroom_folder):
+        # typed, args values are Any and os.listdir(Any) gives an unknown type
+        # (ReadableDir action always stores a str)
+        lightroom_folder = str(args.lightroom_folder)
+        for file in sorted(os.listdir(lightroom_folder)):
             if file.endswith(".lrcat"):
-                lightroom_database = os.path.join(args.lightroom_folder, file)
+                lightroom_database = os.path.join(lightroom_folder, file)
                 lrdb = sqlite3.connect(lightroom_database)
+                # only use the first one, do not open (and leak) further connections
+                break
         if not lightroom_database or not lrdb:
             print(
                 "(!) We could not find a lrcat file in the given lightroom folder or "
@@ -851,15 +872,20 @@ def main():
     # init the XML meta for handling
     xmp = XMPMeta()
 
+    # typed copies of the include/exclude sources (args values are Any)
+    # (WritableDirFolder action always stores a list of str)
+    xmp_sources: list[str] = [str(source) for source in args.xmp_sources]
+    exclude_sources: list[str] = [str(source) for source in args.exclude_sources]
+    # exclude folders without trailing separator, build once and not for every file
+    exclude_folders: set[str] = {source.rstrip(os.sep) for source in exclude_sources}
+
     # loop through the xmp_sources (folder or files)
     # and read in the XMP data for LAT/LONG, other data
-    for xmp_file_source in args.xmp_sources:
+    for xmp_file_source in xmp_sources:
         # if folder, open and loop
         # NOTE: we do check for folders in there, if there are we recourse traverse them
         # also check that folder is not in exclude list
-        if os.path.isdir(xmp_file_source) and xmp_file_source.rstrip(os.sep) not in [
-            x.rstrip(os.sep) for x in args.exclude_sources
-        ]:
+        if os.path.isdir(xmp_file_source) and xmp_file_source.rstrip(os.sep) not in exclude_folders:
             # open folder and look for any .xmp files and push them into holding array
             # if there are folders, dive into them
             # or glob glob all .xmp files + directory
@@ -868,19 +894,19 @@ def main():
                     # 1) but has no .BK. inside
                     # 2) file is not in exclude list
                     # 3) full folder is not in exclude list
-                    file_path = os.path.join(f"{root}", f"{file}")
+                    file_path = os.path.join(root, file)
                     if (
                         file.endswith(".xmp")
                         and ".BK." not in file
-                        and file_path not in args.exclude_sources
-                        and root.rstrip(os.sep) not in [x.rstrip(os.sep) for x in args.exclude_sources]
+                        and file_path not in exclude_sources
+                        and root.rstrip(os.sep) not in exclude_folders
                         and file_path not in work_files
                     ):
                         work_files.append(file_path)
                         count["all"] += 1
         else:
             # not already added to list and not in the exclude list either
-            if xmp_file_source not in work_files and xmp_file_source not in args.exclude_sources:
+            if xmp_file_source not in work_files and xmp_file_source not in exclude_sources:
                 work_files.append(xmp_file_source)
                 count["all"] += 1
     if args.debug:
@@ -1009,12 +1035,17 @@ def main():
             f"{'-' * (format_length['location'] + 2)}+"
             f"{'-' * (format_length['path'] + 2)}"
         )
+        # header block: page line, title line, separator line
+        # title and separator are already formatted, escape any braces for the page format call
+        # with the unset filters fewer files than found may be listed,
+        # so the total page count is only a maximum, mark it with "?"
+        page_all_marker = "?" if args.unset_only or args.unset_gps_only else ""
         header_line = (
             # can later be set to something else, eg page numbers
-            "{> Page {page_no:,}/{page_all:,}}"
-            # pre replace path length before we add the header titles
-            f"{header_line_2}"
-            f"{header_line_3}"
+            "> Page {page_no:,}/{page_all:,}" + page_all_marker + "\n"
+            + header_line_2.replace("{", "{{").replace("}", "}}")
+            + "\n"
+            + header_line_3
         )
         # header print class
         header_print = ReadOnlyOutput(header_line, page_all, header_repeat)
@@ -1027,7 +1058,7 @@ def main():
 
     # ### MAIN WORK LOOP
     # now we just loop through each file and work on them
-    for xmp_file in work_files:  # noqa: C901
+    for xmp_file in work_files:
         if not args.read_only:
             print(f"---> {xmp_file}: ", end="")
 
@@ -1071,7 +1102,7 @@ def main():
                 #   header_repeat
                 # )
                 if header_print is not None:
-                    header_print.print_header()
+                    header_print.next_line()
                 # the data content
                 print(
                     format_line.format(
@@ -1125,7 +1156,8 @@ def main():
         else:
             # ### LR Action Flag (data ok)
             lightroom_data_ok = True
-            lrdb_row = {}
+            # sqlite3.Row (row_factory is set) or None if nothing found / no lightroom
+            lrdb_row: sqlite3.Row | None = None
             # ### LIGHTROOM DB READING
             # read in data from DB if we uave lightroom folder
             if use_lightroom and cur is not None:
@@ -1135,24 +1167,27 @@ def main():
                 lr_query_params = [xmp_file_basename]
                 # for strict check we need to get the full path
                 # and add / as the LR stores the last folder with /
+                # LR stores absolute, real paths: realpath resolves symlinks and also collapses
+                # any "//", "./", "../" and removes a trailing "/", then exactly one "/" is added
+                # (rstrip for the root folder "/")
                 if args.lightroom_strict:
-                    # xmp_file_path = "{}/{}".format(os.path.split(xmp_file)[0], '/')
-                    xmp_file_path = f"{os.path.split(xmp_file)[0]}/{'/'}"
+                    xmp_file_path = f"{os.path.realpath(os.path.dirname(xmp_file)).rstrip('/')}/"
                     lr_query_params.append(xmp_file_path)
                 cur.execute(query, lr_query_params)
                 # get the row data
-                lrdb_row = cur.fetchone()
+                # fetchone is untyped (Any), with row_factory = sqlite3.Row it is a Row or None
+                lrdb_row = cast(sqlite3.Row | None, cur.fetchone())
                 # abort the read because we found more than one row
                 if cur.fetchone() is not None:
                     print("(!) Lightroom DB returned more than one more row")
                     lightroom_data_ok = False
                     count["many_found"] += 1
                 # Notify if we couldn't find one
-                elif not lrdb_row:
+                elif lrdb_row is None:
                     print("(!) Could not get data from Lightroom DB")
                     lightroom_data_ok = False
                     count["not_found"] += 1
-                if args.debug and lrdb_row:
+                if args.debug and lrdb_row is not None:
                     print(f"### LightroomDB: {tuple(lrdb_row)} / {lrdb_row.keys()}")
 
             # create a duplicate copy for later checking if something changed
@@ -1162,13 +1197,14 @@ def main():
             # same for location names
             # if missing in XMP but in LR -> set in XMP
             # if missing in both do lookup in Maps
-            if use_lightroom and lightroom_data_ok:
+            if use_lightroom and lightroom_data_ok and lrdb_row is not None:
                 # check lat/long separate
+                # LR stores GPS as decimal number (REAL), sqlite3.Row values are untyped
                 if lrdb_row["gpsLatitude"] and not data_set["GPSLatitude"]:
                     # we need to convert to the Degree,Min.sec[NSEW] format
-                    data_set["GPSLatitude"] = convert_lat_to_dms(lrdb_row["gpsLatitude"])
+                    data_set["GPSLatitude"] = convert_lat_to_dms(float(lrdb_row["gpsLatitude"]))
                 if lrdb_row["gpsLongitude"] and not data_set["GPSLongitude"]:
-                    data_set["GPSLongitude"] = convert_long_to_dms(lrdb_row["gpsLongitude"])
+                    data_set["GPSLongitude"] = convert_long_to_dms(float(lrdb_row["gpsLongitude"]))
                 # now check Location, City, etc
                 for loc in data_set_loc:
                     # overwrite original set (read from XMP) with LR data
@@ -1200,7 +1236,8 @@ def main():
                     has_fuzzy_cache = False
                     best_match_latlong = ""
                     if args.fuzzy_distance:
-                        shortest_distance = args.fuzzy_distance
+                        # distance in meters (DistanceValues action stores an int)
+                        shortest_distance = float(args.fuzzy_distance)
                         # check if we have fuzzy distance, if no valid found do maps lookup
                         for _cache_key in data_cache:
                             # split up cache key so we can use in the distance calc method

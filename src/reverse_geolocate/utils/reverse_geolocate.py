@@ -8,7 +8,7 @@ from reverse_geolocate.utils.long_lat import long_lat_reg, LongLatEntry
 from reverse_geolocate.utils.string_helpers import only_latin_chars
 
 
-def reverse_geolocate(longitude: str, latitude: str, map_type: str, args: argparse.Namespace):
+def reverse_geolocate(longitude: str, latitude: str, map_type: str, args: argparse.Namespace) -> dict[str, str]:
     """
     wrapper to call to either the google or openstreetmap
 
@@ -19,7 +19,7 @@ def reverse_geolocate(longitude: str, latitude: str, map_type: str, args: argpar
         args (argparse.Namespace): command line arguments
 
     Returns:
-        _type_: dict with all data (see below)
+        dict[str, str]: CountryCode, Country, State, City, Location, status, error_message
     """
     # clean up long/lat
     # they are stored with N/S/E/W if they come from an XMP
@@ -36,7 +36,7 @@ def reverse_geolocate(longitude: str, latitude: str, map_type: str, args: argpar
         return {"Country": "", "status": "ERROR", "error": "Map type not valid"}
 
 
-def reverse_geolocate_init(longitude: float, latitude: float):
+def reverse_geolocate_init(longitude: float, latitude: float) -> dict[str, str]:
     """
     inits the dictionary for return, and checks the lat/long on valid
     returns geolocation dict with status = 'ERROR' if an error occurded
@@ -46,10 +46,10 @@ def reverse_geolocate_init(longitude: float, latitude: float):
         latitude (float): latitude
 
     Returns:
-        _type_: empty geolocation dictionary, or error flag if lat/long is not valid
+        dict[str, str]: empty geolocation dictionary, or error flag if lat/long is not valid
     """
     # basic dict format
-    geolocation = {
+    geolocation: dict[str, str] = {
         "CountryCode": "",
         "Country": "",
         "State": "",
@@ -72,7 +72,7 @@ def reverse_geolocate_init(longitude: float, latitude: float):
     return geolocation
 
 
-def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: argparse.Namespace):
+def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: argparse.Namespace) -> dict[str, str]:
     """
     OpenStreetMap reverse lookcation lookup
 
@@ -143,7 +143,7 @@ def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: a
     return geolocation
 
 
-def reverse_geolocate_google(longitude: float, latitude: float, args: argparse.Namespace):
+def reverse_geolocate_google(longitude: float, latitude: float, args: argparse.Namespace) -> dict[str, str]:
     """
     Google Maps reverse location lookup
 
