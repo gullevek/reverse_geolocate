@@ -15,8 +15,6 @@ wheels/
 # all .env files
 .env
 
-# uv lock files
-uv.lock
 # composer lock file
 composer.lock
 vendor/

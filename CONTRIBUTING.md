@@ -1,3 +1,3 @@
-Code has to pass flake8 coding guidlines
+# Contributing
 
-http://flake8.pycqa.org/en/latest/
+Pass ruff, ty, pylint
