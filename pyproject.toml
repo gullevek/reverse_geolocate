@@ -1,6 +1,6 @@
 [project]
 name = "reverse-geolocate"
-version = "2.0.0"
+version = "2.0.0-rc-1"
 description = "Reverse Geolcate script"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -14,30 +14,48 @@ reverse-geolocate = "reverse_geolocate.reverse_geolocate:main"
 
 # MARK: build target
 [[tool.uv.index]]
-name = "private-pypi"
-url = "https://git.gullevek.org/api/packages/PyPI/pypi/simple/"
-publish-url = "https://git.gullevek.org/api/packages/PyPI/pypi/"
+name = "pypi"
+url = "https://pypi.org/simple/"
+publish-url = "https://pypi.org/legacy/"
 
 [build-system]
-requires = ["uv_build>=0.9.7,<0.10.0"]
+requires = ["uv_build>=0.11.0,<0.13.0"]
 build-backend = "uv_build"
 
 
 # MARK: Python linting
 [tool.pyright]
 typeCheckingMode = "strict"
+# local type stubs (libxmp ships none)
+stubPath = "typings"
 reportMissingImports = "information"
 reportMissingTypeStubs = "information"
 reportUnknownMemberType = "information"
-[tool.ruff]
-line-length = 120
+# Ty
+[tool.ty.environment]
+# local type stubs (libxmp ships none)
+extra-paths = ["typings"]
+[tool.ty.rules]
+# ty has no strict mode; enabling all rules is the closest equivalent
+all = "error"
+unresolved-import = "warn"
+# Black (SUPERSEEDED BY RUFF format)
 [tool.black]
 # set 10 short for better formatting
 line-length = 110
 # to avoid " ... " " ... " string sets
 # experimental-string-processing = true
 preview = true
-enable-unstable-feature = ["string_processing"]
+enable-unstable-feature = ["string_processing", "hug_parens_with_braces_and_square_brackets"]
+[tool.ruff]
+line-length = 120
+[tool.ruff.lint.isort]
+# https://docs.astral.sh/ruff/settings/#lint_isort_force-single-line
+# force-single-line = true
+combine-as-imports = true
+[tool.ruff.format]
+# set 10 short for better formatting
+# line-length = 110
 [tool.pylint.format]
 max-line-length = 120
 [tool.pylint.miscellaneous]

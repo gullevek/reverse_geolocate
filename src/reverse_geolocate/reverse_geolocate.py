@@ -368,9 +368,11 @@ def output_list_width_adjust(args):
                     ):
                         # check that we are not OVER but one under
                         width_up = get_terminal_size().columns - current_columns - 1
-                        if (resize == 1 and width_up < 0) or (resize == -1 and width_up != 0):
-                            if format_length["path"] + width_up >= resize_width_min:
-                                format_length["path"] += width_up
+                        if (
+                            (resize == 1 and width_up < 0) or (resize == -1 and width_up != 0) and
+                            format_length["path"] + width_up >= resize_width_min
+                        ):
+                            format_length["path"] += width_up
                         abort = True
                         break
                 if abort:
@@ -670,10 +672,9 @@ def main():
         print("You cannot set an OpenStreetMap email and not use OpenStreetMap")
         error = True
     # if email and not basic valid email (@ .)
-    if args.email:
-        if not re.match(r"^.+@.+\.[A-Za-z]{1,}$", args.email):
-            print(f"Not a valid email for OpenStreetMap: {args.email}")
-            error = True
+    if args.email and not re.match(r"^.+@.+\.[A-Za-z]{1,}$", args.email):
+        print(f"Not a valid email for OpenStreetMap: {args.email}")
+        error = True
     # on error exit here
     if error:
         sys.exit(1)
@@ -690,12 +691,10 @@ def main():
         config.read(config_data)
         # check if api group & setting is there. also never overwrite argument given data
         if "API" in config:
-            if "googleapikey" in config["API"]:
-                if not args.google_api_key:
-                    args.google_api_key = config["API"]["googleapikey"]
-            if "openstreetmapemail" in config["API"]:
-                if not args.email:
-                    args.email = config["API"]["openstreetmapemail"]
+            if "googleapikey" in config["API"] and not args.google_api_key:
+                args.google_api_key = config["API"]["googleapikey"]
+            if "openstreetmapemail" in config["API"] and not args.email:
+                args.email = config["API"]["openstreetmapemail"]
     # write data if exists and changed
     if args.config_write and (args.google_api_key or args.email):
         config_change = False
@@ -759,9 +758,9 @@ def main():
     # cache set to avoid double lookups for identical Lat/Ling
     data_cache = {}
     # work files, all files + folders we need to work on
-    work_files = []
+    work_files: list[str] = []
     # all failed files
-    failed_files = []
+    failed_files: list[str] = []
     # use lightroom
     use_lightroom = False
     # path to lightroom database
@@ -875,10 +874,10 @@ def main():
                         and ".BK." not in file
                         and file_path not in args.exclude_sources
                         and root.rstrip(os.sep) not in [x.rstrip(os.sep) for x in args.exclude_sources]
+                        and file_path not in work_files
                     ):
-                        if file_path not in work_files:
-                            work_files.append(file_path)
-                            count["all"] += 1
+                        work_files.append(file_path)
+                        count["all"] += 1
         else:
             # not already added to list and not in the exclude list either
             if xmp_file_source not in work_files and xmp_file_source not in args.exclude_sources:

@@ -4,6 +4,13 @@ latitude/longitude functions
 
 import re
 from math import radians, sin, cos, atan2, sqrt
+from typing import TypedDict
+
+
+class LongLatEntry(TypedDict):
+    """For the long/lat return"""
+    longitude: float
+    latitude: float
 
 
 def convert_lat_long_to_dms(
@@ -61,7 +68,7 @@ def convert_long_to_dms(lat_long: float) -> str:
     return convert_lat_long_to_dms(lat_long, is_longitude=True)
 
 
-def long_lat_reg(longitude: str, latitude: str) -> dict[str, float]:
+def long_lat_reg(longitude: str, latitude: str) -> LongLatEntry:
     """
     converts the XMP/EXIF formatted GPS Long/Lat coordinates
     from the <Degree>,<Minute.Second><NSEW> to the normal float
@@ -72,26 +79,44 @@ def long_lat_reg(longitude: str, latitude: str) -> dict[str, float]:
         latitude(str): n,n.nNSEW format
 
     Returns:
-        dictionary: dict with converted lat/long
+        LongLatEntry: dict with converted lat/long
     """
-    # regex
-    latlong_re = re.compile(r"^(\d+),(\d+\.\d+)([NESW]{1})$")
     # dict for loop
-    lat_long: dict[str, str | float] = {"longitude": longitude, "latitude": latitude}
-    # for element in lat_long:
-    for index, element in lat_long.items():
-        # match if it is exif GPS format
-        _match = latlong_re.match(element)
-        if _match is not None:
-            # convert from Degree, Min.Sec into float format
-            lat_long[index] = float(_match.group(1)) + (float(_match.group(2)) / 60)
-            # if S or W => inverse to negative
-            if _match.group(3) == "S" or _match.group(3) == "W":
-                lat_long[index] *= -1
+    lat_long: LongLatEntry = {
+        "longitude": parse_long_lat(longitude),
+        "latitude": parse_long_lat(latitude),
+    }
     return lat_long
 
 
-def convert_dms_to_lat(lat_long):
+def parse_long_lat(entry: str) -> float:
+    """
+    Convert to float
+
+    Arguments:
+        entry {str} -- _description_
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        float -- _description_
+    """
+    latlong_re = re.compile(r"^(\d+),(\d+\.\d+)([NESW]{1})$")
+    _match = latlong_re.match(entry)
+    long_lat = 0
+    if _match is not None:
+        # convert from Degree, Min.Sec into float format
+        long_lat = float(_match.group(1)) + (float(_match.group(2)) / 60)
+        # if S or W => inverse to negative
+        if _match.group(3) == "S" or _match.group(3) == "W":
+            long_lat *= -1
+    else:
+        raise ValueError(f"Invalid long/lat entry: {entry}")
+    return long_lat
+
+
+def convert_dms_to_lat(lat_long: str) -> float:
     """
     rapper calls for DMS to Lat/Long: latitude
 
@@ -99,12 +124,12 @@ def convert_dms_to_lat(lat_long):
         lat_long(str): n,n.nNSEW format
 
     Returns:
-        dict: dict with converted lat/long
+        float: converted latitude in decimal format
     """
     return long_lat_reg("0,0.0N", lat_long)["latitude"]
 
 
-def convert_dms_to_long(lat_long):
+def convert_dms_to_long(lat_long: str) -> float:
     """
     wrapper calls for DMS to Lat/Long: longitude
 
@@ -112,37 +137,39 @@ def convert_dms_to_long(lat_long):
         lat_long(str): n,n.nNSEW format
 
     Returns:
-        dict: dict with converted lat/long
+        float: converted longitude in decimal format
     """
     return long_lat_reg(lat_long, "0,0.0N")["longitude"]
 
 
-def get_distance(from_longitude, from_latitude, to_longitude, to_latitude):
+def get_distance(from_longitude: str, from_latitude: str, to_longitude: str, to_latitude: str) -> float:
     """
-    calculates the difference between two coordinates
+    calculates the distance between two coordinates (haversine formula)
 
     Args:
-        from_longitude(str): from longitude
-        from_latitude(str): from latitude
-        to_longitude(str): to longitude
-        to_latitude(str): to latitude
+        from_longitude(str): from longitude in DMS format
+        from_latitude(str): from latitude in DMS format
+        to_longitude(str): to longitude in DMS format
+        to_latitude(str): to latitude in DMS format
 
     Returns:
         float: distance in meters
     """
-    # earth radius in meters
-    earth_radius = 6378137.0
-    # convert all from radians with pre convert DMS to long and to float
-    from_longitude = radians(float(convert_dms_to_long(from_longitude)))
-    from_latitude = radians(float(convert_dms_to_lat(from_latitude)))
-    to_longitude = radians(float(convert_dms_to_long(to_longitude)))
-    to_latitude = radians(float(convert_dms_to_lat(to_latitude)))
+    # mean earth radius in meters (IUGG), the haversine formula assumes a sphere
+    earth_radius = 6371008.8
+    # convert DMS to decimal and then to radians
+    from_long_rad = radians(convert_dms_to_long(from_longitude))
+    from_lat_rad = radians(convert_dms_to_lat(from_latitude))
+    to_long_rad = radians(convert_dms_to_long(to_longitude))
+    to_lat_rad = radians(convert_dms_to_lat(to_latitude))
     # distance from - to
-    distance_longitude = from_longitude - to_longitude
-    distance_latitude = from_latitude - to_latitude
+    distance_longitude = from_long_rad - to_long_rad
+    distance_latitude = from_lat_rad - to_lat_rad
     # main distance calculation
-    distance = (
-        sin(distance_latitude / 2) ** 2 + cos(from_latitude) * cos(to_latitude) * sin(distance_longitude / 2) ** 2
+    haversine = (
+        sin(distance_latitude / 2) ** 2 + cos(from_lat_rad) * cos(to_lat_rad) * sin(distance_longitude / 2) ** 2
     )
-    distance = 2 * atan2(sqrt(distance), sqrt(1 - distance))
-    return earth_radius * distance
+    # clamp, float rounding can push it slightly above 1 (antipodal points) -> sqrt of negative
+    haversine = min(1.0, max(0.0, haversine))
+    central_angle = 2 * atan2(sqrt(haversine), sqrt(1 - haversine))
+    return earth_radius * central_angle

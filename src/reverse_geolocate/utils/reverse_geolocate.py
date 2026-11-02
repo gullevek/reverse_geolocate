@@ -2,21 +2,21 @@
 reverse geolacte functions
 """
 
-import re
+import argparse
 import requests
-from reverse_geolocate.utils.long_lat import long_lat_reg
+from reverse_geolocate.utils.long_lat import long_lat_reg, LongLatEntry
 from reverse_geolocate.utils.string_helpers import only_latin_chars
 
 
-def reverse_geolocate(longitude, latitude, map_type, args):
+def reverse_geolocate(longitude: str, latitude: str, map_type: str, args: argparse.Namespace):
     """
     wrapper to call to either the google or openstreetmap
 
     Args:
-        longitude (float): latitude
-        latitude (float): longitue
+        longitude (str): longitude
+        latitude (str): latitude
         map_type(str): map search target (google or openstreetmap)
-        args (_type_): _description_
+        args (argparse.Namespace): command line arguments
 
     Returns:
         _type_: dict with all data (see below)
@@ -26,7 +26,7 @@ def reverse_geolocate(longitude, latitude, map_type, args):
     # format: Deg,Min.Sec[NSEW]
     # NOTE: lat is N/S, long is E/W
     # detect and convert
-    lat_long = long_lat_reg(longitude=longitude, latitude=latitude)
+    lat_long: LongLatEntry = long_lat_reg(longitude=longitude, latitude=latitude)
     # which service to use
     if map_type == "google":
         return reverse_geolocate_google(lat_long["longitude"], lat_long["latitude"], args)
@@ -36,7 +36,7 @@ def reverse_geolocate(longitude, latitude, map_type, args):
         return {"Country": "", "status": "ERROR", "error": "Map type not valid"}
 
 
-def reverse_geolocate_init(longitude, latitude):
+def reverse_geolocate_init(longitude: float, latitude: float):
     """
     inits the dictionary for return, and checks the lat/long on valid
     returns geolocation dict with status = 'ERROR' if an error occurded
@@ -60,14 +60,19 @@ def reverse_geolocate_init(longitude, latitude):
         "error_message": "",
     }
     # error if long/lat is not valid
-    latlong_re = re.compile(r"^\d+\.\d+$")
-    if not latlong_re.match(str(longitude)) or not latlong_re.match(str(latitude)):
+    # negative values are valid (S for latitude, W for longitude)
+    # latitude must be in -90 to 90, longitude in -180 to 180
+    try:
+        valid = -90 <= float(latitude) <= 90 and -180 <= float(longitude) <= 180
+    except (TypeError, ValueError):
+        valid = False
+    if not valid:
         geolocation["status"] = "ERROR"
         geolocation["error_message"] = f"Latitude {latitude} or Longitude {longitude} are not valid"
     return geolocation
 
 
-def reverse_geolocate_open_street_map(longitude, latitude, args):
+def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: argparse.Namespace):
     """
     OpenStreetMap reverse lookcation lookup
 
@@ -78,7 +83,7 @@ def reverse_geolocate_open_street_map(longitude, latitude, args):
     Args:
         longitude (float): longitude
         latitude (float): latitude
-        args (_type_): _description_
+        args (argparse.Namespace): command line arguments
 
     Returns:
         dictionary: dict with locaiton, city, state, country, country code
@@ -133,23 +138,26 @@ def reverse_geolocate_open_street_map(longitude, latitude, args):
     else:
         geolocation["status"] = "ERROR"
         geolocation["error_message"] = response.json()["error"]
-        print(f"Error in request: {geolocation['error']}")
+        print(f"Error in request: {geolocation['error_message']}")
     # return
     return geolocation
 
 
-def reverse_geolocate_google(longitude, latitude, args):
+def reverse_geolocate_google(longitude: float, latitude: float, args: argparse.Namespace):
     """
     Google Maps reverse location lookup
 
     sample:
-    http://maps.googleapis.com/maps/api/geocode/json?latlng=<latitude>,<longitude>&language=<lang>
-        &sensor=false&key=<api key>
+    https://geocode.googleapis.com/v4/geocode/location/<latitude>,<longitude>?languageCode=<lang>
+        with the api key in the "X-Goog-Api-Key" header
+
+    doc:
+    https://developers.google.com/maps/documentation/geocoding/reverse-geocoding
 
     Args:
         longitude (float): longitude
         latitude (float): latitude
-        args (_type_): _description_
+        args (argparse.Namespace): command line arguments
 
     Returns:
         dictionary: dict with location, city, state, country, country code
@@ -160,29 +168,33 @@ def reverse_geolocate_google(longitude, latitude, args):
     temp_geolocation = geolocation.copy()
     if geolocation["status"] == "ERROR":
         return geolocation
-    # sensor (why?)
-    sensor = "false"
     # language, so we get ascii en back
     language = "en"
-    # request to google
-    # if a google api key is used, the request has to be via https
-    protocol = "https://" if args.google_api_key else "http://"
-    base = "maps.googleapis.com/maps/api/geocode/json?"
+    # request to google, Geocoding API v4 (always https)
+    # location is given as unstructured "lat,lng" string in the path
+    url = f"https://geocode.googleapis.com/v4/geocode/location/{latitude},{longitude}"
     # build the base params
-    payload = {"latlng": f"{latitude},{longitude}", "language": language, "sensor": sensor}
-    # if we have a google api key, add it here
+    payload = {"languageCode": language}
+    # the api key is sent in the header (keeps it out of the url/debug output)
+    headers: dict[str, str] = {}
     if args.google_api_key:
-        payload["key"] = args.google_api_key
-    # build the full url and send it to google
-    url = f"{protocol}{base}"
+        headers["X-Goog-Api-Key"] = args.google_api_key
     # timeout in seconds
     timeout = 60
-    response = requests.get(url, params=payload, timeout=timeout)
+    # send it to google
+    try:
+        response = requests.get(url, params=payload, headers=headers, timeout=timeout)
+        response_json = response.json()
+    except (requests.exceptions.RequestException, ValueError) as e:
+        geolocation["status"] = "ERROR"
+        geolocation["error_message"] = str(e)
+        print(f"Error in request: {geolocation['status']} {geolocation['error_message']}")
+        return geolocation
     # debug output
     if args.debug:
         print(f"Google search for Lat: {latitude}, Long: {longitude} with {response.url}")
     if args.debug and args.verbose >= 1:
-        print(f"Google response: {response} => JSON: {response.json()}")
+        print(f"Google response: {response} => JSON: {response_json}")
     # type map
     # For automated return of correct data into set to return
     type_map = {
@@ -192,10 +204,11 @@ def reverse_geolocate_google(longitude, latitude, args):
         "City": ["locality", "administrative_area_level_3"],
         "Location": ["sublocality_level_1", "sublocality_level_2", "route"],
     }
-    # print("Error: {}".format(response.json()['status']))
-    if response.json()["status"] == "OK":
+    # on success there is no status field, errors are returned as
+    # {"error": {"code": <int>, "message": <str>, "status": <str>}}
+    if response.ok and "error" not in response_json:
         # first entry for type = premise
-        for entry in response.json()["results"]:
+        for entry in response_json.get("results", []):
             for sub_entry in entry:
                 if sub_entry == "types" and (
                     "premise" in entry[sub_entry]
@@ -216,7 +229,7 @@ def reverse_geolocate_google(longitude, latitude, args):
                     for loc_index, sub_index in type_map.items():
                         for index in sub_index:
                             # this is an array, so we need to loop through each
-                            for addr in entry["address_components"]:
+                            for addr in entry.get("addressComponents", []):
                                 # in types check that index is in there
                                 # and the location is not yet set
                                 # also check that entry is in LATIN based
@@ -225,24 +238,25 @@ def reverse_geolocate_google(longitude, latitude, args):
                                     # for country code we need to use short name,
                                     # else we use long name
                                     if loc_index == "CountryCode":
-                                        if only_latin_chars(addr["short_name"]):
-                                            geolocation[loc_index] = addr["short_name"]
+                                        if only_latin_chars(addr["shortText"]):
+                                            geolocation[loc_index] = addr["shortText"]
                                         elif not temp_geolocation[loc_index]:
-                                            temp_geolocation[loc_index] = addr["short_name"]
+                                            temp_geolocation[loc_index] = addr["shortText"]
                                     else:
-                                        if only_latin_chars(addr["long_name"]):
-                                            geolocation[loc_index] = addr["long_name"]
+                                        if only_latin_chars(addr["longText"]):
+                                            geolocation[loc_index] = addr["longText"]
                                         elif not temp_geolocation[loc_index]:
-                                            temp_geolocation[loc_index] = addr["long_name"]
+                                            temp_geolocation[loc_index] = addr["longText"]
         # check that all in geoloaction are filled and if not fille from temp_geolocation dictionary
         for loc_index in type_map:
             if not geolocation[loc_index] and temp_geolocation[loc_index]:
                 geolocation[loc_index] = temp_geolocation[loc_index]
-        # write OK status
-        geolocation["status"] = response.json()["status"]
+        # write status (v4 has no status field, ZERO_RESULTS if nothing found)
+        geolocation["status"] = "OK" if response_json.get("results") else "ZERO_RESULTS"
     else:
-        geolocation["error_message"] = response.json()["error_message"]
-        geolocation["status"] = response.json()["status"]
+        error = response_json.get("error", {})
+        geolocation["error_message"] = error.get("message", response.text)
+        geolocation["status"] = error.get("status", "ERROR")
         print(f"Error in request: {geolocation['status']} {geolocation['error_message']}")
     # return
     return geolocation

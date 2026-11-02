@@ -6,10 +6,10 @@ import unicodedata
 
 # this is for looking up if string is non latin letters
 # this is used by isLatin and onlyLatinChars
-cache_latin_letters = {}
+cache_latin_letters: dict[str, bool] = {}
 
 
-def shorten_string(string, width, placeholder=".."):
+def shorten_string(string: str, width: int, placeholder: str = "..") -> str:
     """
     shortens a string to width and attached placeholder
 
@@ -41,13 +41,13 @@ def shorten_string(string, width, placeholder=".."):
         return str(string)
 
 
-def string_len_cjk(string):
+def string_len_cjk(string: str) -> int:
     """
     because len on string in python counts characters but we need the width
     count for formatting, we count two for a double byte characters
 
     Args:
-        string (string): string to check length
+        string (str): string to check length
 
     Returns:
         int: length including double count for double width characters
@@ -56,7 +56,7 @@ def string_len_cjk(string):
     return sum(1 + (unicodedata.east_asian_width(c) in "WF") for c in string)
 
 
-def is_latin(uchr):
+def is_latin(uchr: str) -> bool:
     """
     checks via the unciode class if a character is LATIN char based
 
@@ -64,10 +64,10 @@ def is_latin(uchr):
     https://stackoverflow.com/a/3308844/7811993
 
     Args:
-        uchr (str): _description_
+        uchr (str): character to check
 
     Returns:
-        str: flagged LATIN or not char
+        bool: True if LATIN char, False otherwise
     """
     try:
         # if we found in the dictionary return
@@ -77,7 +77,7 @@ def is_latin(uchr):
         return cache_latin_letters.setdefault(uchr, "LATIN" in unicodedata.name(uchr))
 
 
-def only_latin_chars(unistr):
+def only_latin_chars(unistr: str) -> bool:
     """
     chekcs if a string is based on LATIN chars. No for any CJK, Cyrillic, Hebrew, etc
 
@@ -93,7 +93,7 @@ def only_latin_chars(unistr):
     return all(is_latin(uchr) for uchr in unistr if uchr.isalpha())
 
 
-def format_len(string, length):
+def format_len(string: str, length: int) -> int:
     """
     in case of CJK characters we need to adjust the format length dynamically
     calculate correct length based on string given
@@ -103,9 +103,11 @@ def format_len(string, length):
         length (int): format length
 
     Returns:
-        int: adjusted format legnth
+        int: adjusted format length
     """
     # returns length udpated for string with double byte characters
     # get string length normal, get string length including double byte characters
     # then subtract that from the original length
     return length - (string_len_cjk(string) - len(string))
+
+# __END__
