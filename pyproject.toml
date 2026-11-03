@@ -8,6 +8,8 @@ dependencies = [
     "python-xmp-toolkit>=2.1.0",
     "requests>=2.32.5",
 ]
+license = "GPL-3.0-or-later"
+license-files = ["LICEN[CS]E*"]
 
 [project.scripts]
 reverse-geolocate = "reverse_geolocate.reverse_geolocate:main"
@@ -16,10 +18,15 @@ reverse-geolocate = "reverse_geolocate.reverse_geolocate:main"
 [[tool.uv.index]]
 name = "pypi"
 url = "https://pypi.org/simple/"
-publish-url = "https://pypi.org/legacy/"
+publish-url = "https://upload.pypi.org/legacy/"
+# Test PyPI index for publishing to the test repository
+[[tool.uv.index]]
+name = "test-pypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
 
 [build-system]
-requires = ["uv_build>=0.11.0,<0.13.0"]
+requires = ["uv_build>=0.11.0,<0.14.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
