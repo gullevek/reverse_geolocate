@@ -23,7 +23,7 @@ from math import ceil, radians, sin, cos, atan2, sqrt
 from typing import Any
 import requests
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
-from libxmp import XMPMeta, consts
+from libxmp import XMPMeta, consts, ExempiLoadError
 
 ##############################################################
 # FUNCTIONS
@@ -859,7 +859,11 @@ def main():
     parser.add_argument('--test', action='store_true', dest='test', help='Do not write data back to file')
 
     # read in the argumens
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except argparse.ArgumentTypeError as e:
+        print("Argument error: {}".format(e))
+        sys.exit(1)
 
     ##############################################################
     # MAIN CODE
@@ -1070,7 +1074,14 @@ def main():
         sys.exit(1)
 
     # init the XML meta for handling
-    xmp = XMPMeta()
+    try:
+        xmp = XMPMeta()
+    except ExempiLoadError as e:
+        print(
+            "(!) Exempi library not found or not working "
+            f"(must be installed separated): {e}"
+        )
+        sys.exit(1)
 
     # if xmp_sources is None, set to empty list
     if args.xmp_sources is None:
