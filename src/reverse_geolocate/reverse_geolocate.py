@@ -28,7 +28,7 @@ from shutil import copyfile, get_terminal_size
 from typing import Any, cast, override
 
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
-from libxmp import XMPMeta, consts
+from libxmp import ExempiLoadError, XMPMeta, consts
 
 # user modules below
 from reverse_geolocate.utils.long_lat import (
@@ -624,8 +624,12 @@ def argument_parser():
     # test flag
     parser.add_argument("--test", action="store_true", dest="test", help="Do not write data back to file")
 
-    # read in the argumens
-    return parser.parse_args()
+    # read in the arguments and return the namespace
+    try:
+        return parser.parse_args()
+    except argparse.ArgumentTypeError as e:
+        print(f"Argument error: {e}")
+        sys.exit(1)
 
 
 ##############################################################
@@ -862,7 +866,14 @@ def main():
         sys.exit(1)
 
     # init the XML meta for handling
-    xmp = XMPMeta()
+    try:
+        xmp = XMPMeta()
+    except ExempiLoadError as e:
+        print(
+            "(!) Exempi library not found or not working "
+            f"(must be installed separated): {e}"
+        )
+        sys.exit(1)
 
     # typed copies of the include/exclude sources (args values are Any)
     # (WritableDirFolder action always stores a list of str)
