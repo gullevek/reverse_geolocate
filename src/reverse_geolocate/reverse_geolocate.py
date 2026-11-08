@@ -869,10 +869,7 @@ def main():
     try:
         xmp = XMPMeta()
     except ExempiLoadError as e:
-        print(
-            "(!) Exempi library not found or not working "
-            f"(must be installed separated): {e}"
-        )
+        print(f"(!) Exempi library not found or not working (must be installed separated): {e}")
         sys.exit(1)
 
     # typed copies of the include/exclude sources (args values are Any)
