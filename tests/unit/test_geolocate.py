@@ -500,6 +500,20 @@ def test_google_first_non_latin_fallback_wins(fake_get: FakeGet) -> None:
     assert reverse_geolocate_google(139.5, 35.5, make_args())["City"] == "渋谷区"
 
 
+def test_google_first_non_latin_country_code_fallback_wins(fake_get: FakeGet) -> None:
+    # the country code uses the short text, a second non latin one does not replace the first
+    fake_get.response = google_ok(
+        result(
+            ["premise"],
+            component("Japan", "日本", "country"),
+            component("Japan", "日本国", "country"),
+        )
+    )
+    geolocation = reverse_geolocate_google(139.5, 35.5, make_args())
+    assert geolocation["CountryCode"] == "日本"
+    assert geolocation["Country"] == "Japan"
+
+
 def test_google_latin_with_accents(fake_get: FakeGet) -> None:
     fake_get.response = google_ok(result(["premise"], component("Österreich", "AT", "country")))
     assert reverse_geolocate_google(16.3, 48.2, make_args())["Country"] == "Österreich"

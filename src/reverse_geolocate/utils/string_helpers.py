@@ -151,13 +151,12 @@ def shorten_path(path: str, length: int = 30, file_only: bool = False, path_only
     available = max(0, length - len(placeholder))
     # collect characters from the right as long as the display width fits
     # (slicing by character count would be wrong for double width CJK characters)
+    # the path is wider than available (checked above), so this always stops before cut reaches 0
     width = 0
     cut = len(path)
-    for index in range(len(path) - 1, -1, -1):
-        width += string_len_cjk(path[index])
-        if width > available:
-            break
-        cut = index
+    while cut > 0 and width + string_len_cjk(path[cut - 1]) <= available:
+        cut -= 1
+        width += string_len_cjk(path[cut])
     return f"{placeholder}{path[cut:]}"
 
 
