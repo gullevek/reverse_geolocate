@@ -30,9 +30,10 @@ def convert_lat_long_to_dms(lat_long: float, is_latitude: bool = False, is_longi
     degree = int(abs(lat_long))
     minutes = round((float(abs(lat_long)) - int(abs(lat_long))) * 60, 10)
     if is_latitude is True:
-        direction = "S" if int(lat_long) < 0 else "N"
+        # compare the float, int() truncates towards 0, so -0.5 would become 0 (N/E)
+        direction = "S" if lat_long < 0 else "N"
     elif is_longitude is True:
-        direction = "W" if int(lat_long) < 0 else "E"
+        direction = "W" if lat_long < 0 else "E"
     else:
         direction = "(INVALID)"
     return f"{degree},{minutes}{direction}"

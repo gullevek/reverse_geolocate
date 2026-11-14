@@ -66,6 +66,15 @@ class ReadOnlyOutput:
         Args:
             line (str): data line to print
         """
+        # missing (empty) or malformed GPS data would raise a ValueError, show it as empty
+        try:
+            latitude = str(convert_dms_to_lat(data_set["GPSLatitude"]))
+        except ValueError:
+            latitude = ""
+        try:
+            longitude = str(convert_dms_to_long(data_set["GPSLongitude"]))
+        except ValueError:
+            longitude = ""
         print(
             self.line_template.format(
                 # for all possible non latin fields we do adjust
@@ -98,8 +107,8 @@ class ReadOnlyOutput:
                 # shorten from the left
                 filename=shorten_path(xmp_file, self.format_length["filename"], file_only=True),
                 # cut off from the right
-                latitude=(str(convert_dms_to_lat(data_set["GPSLatitude"]))[: self.format_length["latitude"]]),
-                longitude=(str(convert_dms_to_long(data_set["GPSLongitude"]))[: self.format_length["longitude"]]),
+                latitude=latitude[: self.format_length["latitude"]],
+                longitude=longitude[: self.format_length["longitude"]],
                 # is only 2 chars
                 code=data_set["CountryCode"][:2].center(4),
                 # shorten from the right

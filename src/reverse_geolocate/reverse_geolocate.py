@@ -36,6 +36,7 @@ from reverse_geolocate.utils.long_lat import (
     convert_lat_to_dms,
     convert_long_to_dms,
     get_distance,
+    long_lat_reg,
 )
 from reverse_geolocate.utils.read_only_output import ReadOnlyOutput
 
@@ -266,25 +267,28 @@ def main():
         page_all = ceil(len(work_files) / header_repeat)
         # current page number
         # page_no = 1
-        # the formatted line for the output
-        # 4 {} => final replace: data (2 pre replaces)
-        # 1 {} => length replace here
+        # the formatted line for the output, formatted in two passes:
+        # 1st .format(): fills in the {...len} column widths
+        #   ({{ }} => { } so the data placeholders survive this pass)
+        # 2nd .format(): fills in the data (filename, latitude, ...)
+        # NOTE: only the f-string parts below are evaluated at build time,
+        # the plain string parts must not be double escaped
         format_line = (
-            " {{{{filename:<{{filenamelen}}}}}} | "
-            "{{{{latitude:>"
+            " {{filename:<{filenamelen}}} | "
+            "{{latitude:>"
             f"{format_length['latitude']}"
-            "}}}} | "
-            "{{{{longitude:>"
+            "}} | "
+            "{{longitude:>"
             f"{format_length['longitude']}"
-            "}}}} | "
-            "{{{{code:<"
+            "}} | "
+            "{{code:<"
             f"{format_length['code']}"
-            "}}}} | "
-            "{{{{country:<{{countrylen}}}}}} | "
-            "{{{{state:<{{statelen}}}}}} | "
-            "{{{{city:<{{citylen}}}}}} | "
-            "{{{{location:<{{locationlen}}}}}} | "
-            "{{{{path:<{{pathlen}}}}}}"
+            "}} | "
+            "{{country:<{countrylen}}} | "
+            "{{state:<{statelen}}} | "
+            "{{city:<{citylen}}} | "
+            "{{location:<{locationlen}}} | "
+            "{{path:<{pathlen}}}"
         )
         # header line format:
         # blank line
@@ -474,7 +478,17 @@ def main():
             for loc in data_set_loc:
                 if check_overwrite(data_set[loc], loc, args.field_controls, args):
                     has_unset = True
-            if has_unset:
+            # a map lookup needs valid GPS data, missing (empty) or malformed
+            # coordinates would raise a ValueError in the distance/geolocate calls
+            gps_valid = True
+            try:
+                long_lat_reg(longitude=data_set["GPSLongitude"], latitude=data_set["GPSLatitude"])
+            except ValueError:
+                gps_valid = False
+            if has_unset and not gps_valid:
+                print("(!) No valid GPS data for geo location lookup ", end="")
+                failed = True
+            elif has_unset:
                 # check if lat/long is in cache
                 cache_key = f"{data_set['GPSLongitude']}#{data_set['GPSLatitude']}"
                 if args.debug:
