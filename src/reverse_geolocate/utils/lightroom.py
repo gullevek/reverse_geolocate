@@ -6,6 +6,7 @@ find the data for an XMP file and merge it into the XMP data set
 import os
 import sqlite3
 import unicodedata
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -203,18 +204,28 @@ def folder_key_catalog(row: sqlite3.Row) -> str:
     return unicodedata.normalize("NFC", f"{row['absolutePath']}{row['pathFromRoot']}")
 
 
-def merge_lightroom_data(data_set: dict[str, str], row: sqlite3.Row, debug: bool = False) -> dict[str, str]:
+def merge_lightroom_data(
+    data_set: dict[str, str],
+    row: sqlite3.Row,
+    replace_keys: Collection[str] = (),
+    debug: bool = False,
+) -> tuple[dict[str, str], set[str]]:
     """
-    fills the empty fields of an XMP data set with the Lightroom data,
-    existing values are never replaced
+    merges the Lightroom data into an XMP data set:
+    - GPS: only empty fields are filled, existing GPS is never replaced
+    - location fields: empty fields are filled, set fields only if in replace_keys (overwrite)
+    - empty Lightroom values are never used
 
     Args:
         data_set (dict[str, str]): XMP data set (GPSLatitude, GPSLongitude, Location, City, ...)
         row (sqlite3.Row): Lightroom image data (see LightroomCatalog.find)
+        replace_keys (Collection[str], optional): location keys where a set value is replaced
+            by the Lightroom value (-f overwrite). Defaults to ().
         debug (bool, optional): print the used Lightroom values. Defaults to False.
 
     Returns:
-        dict[str, str]: new data set with the Lightroom data
+        tuple[dict[str, str], set[str]]: new data set with the Lightroom data,
+            the location keys set from Lightroom (also if the value did not change)
     """
     merged = data_set.copy()
     # Lightroom stores GPS as decimal number (REAL),
@@ -223,12 +234,14 @@ def merge_lightroom_data(data_set: dict[str, str], row: sqlite3.Row, debug: bool
         merged["GPSLatitude"] = convert_lat_to_dms(float(row["gpsLatitude"]))
     if row["gpsLongitude"] and not merged["GPSLongitude"]:
         merged["GPSLongitude"] = convert_long_to_dms(float(row["gpsLongitude"]))
+    location_keys: set[str] = set()
     for key in LOCATION_KEYS:
-        if row[key] and not merged[key]:
+        if row[key] and (not merged[key] or key in replace_keys):
             merged[key] = str(row[key])
+            location_keys.add(key)
             if debug:
                 print(f"### -> LR: {key} => {row[key]}")
-    return merged
+    return merged, location_keys
 
 
 # __END__

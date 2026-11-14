@@ -141,12 +141,13 @@ class WriteRun:
             return
         # original data for checking if something changed
         data_set_original = data_set.copy()
-        data_set, lightroom_data_ok = self.merge_lightroom(xmp_file, data_set)
+        data_set, lightroom_keys, lightroom_data_ok = self.merge_lightroom(xmp_file, data_set)
 
         # anything unset (or forced overwrite) in the data set: map lookup
+        # (fields set from Lightroom are done, Lightroom has priority over the lookup)
         has_unset = False
         for key in LOCATION_KEYS:
-            if check_overwrite(data_set[key], key, args.field_controls, args):
+            if key not in lightroom_keys and check_overwrite(data_set[key], key, args.field_controls, args):
                 has_unset = True
         # set if the map lookup was needed but could not give data
         lookup_failed = False
@@ -162,7 +163,7 @@ class WriteRun:
                 print(f"### Map Location ({self.map_type}): {maps_location}")
             # must have at least the country set to write anything back
             if maps_location["Country"]:
-                map_keys = self.apply_map_location(data_set, data_set_original, maps_location)
+                map_keys = self.apply_map_location(data_set, data_set_original, maps_location, lightroom_keys)
             else:
                 print("(!) Could not get geo location data ", end="")
                 lookup_failed = True
@@ -205,19 +206,21 @@ class WriteRun:
         self.statistics.failed += 1
         self.statistics.failed_files.append(xmp_file)
 
-    def merge_lightroom(self, xmp_file: str, data_set: dict[str, str]) -> tuple[dict[str, str], bool]:
+    def merge_lightroom(self, xmp_file: str, data_set: dict[str, str]) -> tuple[dict[str, str], set[str], bool]:
         """
-        fills empty data set fields from the Lightroom catalog (if used)
+        merges the Lightroom data into the data set (if used): fills empty fields,
+        with overwrite (-f) also replaces the set location fields that may be overwritten
 
         Args:
             xmp_file (str): XMP file path
             data_set (dict[str, str]): XMP data set
 
         Returns:
-            tuple[dict[str, str], bool]: data set with the Lightroom data, True if Lightroom data was found
+            tuple[dict[str, str], set[str], bool]: data set with the Lightroom data,
+                the location keys set from Lightroom, True if Lightroom data was found
         """
         if self.lightroom is None:
-            return data_set, False
+            return data_set, set(), False
         result = self.lightroom.find(xmp_file)
         if result.status == "many_found":
             # do not use the data, we found more than one image
@@ -229,8 +232,18 @@ class WriteRun:
         if self.args.debug and result.row is not None:
             print(f"### LightroomDB: {tuple(result.row)} / {result.row.keys()}")
         if result.status != "found" or result.row is None:
-            return data_set, False
-        return merge_lightroom_data(data_set, result.row, debug=bool(self.args.debug)), True
+            return data_set, set(), False
+        # set location fields that may be overwritten (-f overwrite, and selected if fields are given):
+        # Lightroom has priority over the existing XMP values and over the lookup
+        replace_keys = {
+            key
+            for key in LOCATION_KEYS
+            if data_set[key] and check_overwrite(data_set[key], key, self.args.field_controls, self.args)
+        }
+        merged, lightroom_keys = merge_lightroom_data(
+            data_set, result.row, replace_keys=replace_keys, debug=bool(self.args.debug)
+        )
+        return merged, lightroom_keys, True
 
     def get_location(self, data_set: dict[str, str]) -> tuple[dict[str, str], bool]:
         """
@@ -255,7 +268,11 @@ class WriteRun:
         return location, False
 
     def apply_map_location(
-        self, data_set: dict[str, str], data_set_original: dict[str, str], maps_location: dict[str, str]
+        self,
+        data_set: dict[str, str],
+        data_set_original: dict[str, str],
+        maps_location: dict[str, str],
+        lightroom_keys: set[str],
     ) -> set[str]:
         """
         fills the data set from the map lookup:
@@ -268,13 +285,14 @@ class WriteRun:
             data_set (dict[str, str]): data set (with Lightroom data), changed in place
             data_set_original (dict[str, str]): data set as read from the XMP file
             maps_location (dict[str, str]): location from the map lookup
+            lightroom_keys (set[str]): location keys set from Lightroom (not changed by the lookup)
 
         Returns:
             set[str]: the location keys filled from the map lookup
         """
         map_keys: set[str] = set()
         for key in LOCATION_KEYS:
-            if data_set[key] != data_set_original[key]:
+            if key in lightroom_keys:
                 continue
             if (
                 check_overwrite(data_set_original[key], key, self.args.field_controls, self.args)

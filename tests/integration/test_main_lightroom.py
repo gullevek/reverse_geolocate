@@ -8,7 +8,7 @@ import sqlite3
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from helpers.lightroom_catalog_builder import LightroomCatalogBuilder, LocationFields
@@ -25,6 +25,8 @@ LIGHTROOM_FIELDS: LocationFields = {
     "Country": "Japan",
     "CountryCode": "JP",
 }
+# the same values for the XMP files (write_xmp takes str keyword arguments)
+LIGHTROOM_XMP_FIELDS = cast(dict[str, str], LIGHTROOM_FIELDS)
 NO_GPS = {"GPSLatitude": "", "GPSLongitude": ""}
 
 
@@ -454,15 +456,98 @@ def test_existing_gps_never_replaced_by_lightroom(
     assert data["GPSLongitude"] == TOKYO_LONG
 
 
-def test_overwrite_lookup_wins_over_xmp_lightroom_not_used(
-    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder
+def test_overwrite_lightroom_first_no_lookup(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
 ) -> None:
-    # NOTE: Lightroom only fills empty XMP fields, also with overwrite;
-    # with overwrite the set XMP fields are replaced by the lookup
-    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto")
-    catalog.add_image(file, City="Osaka", State="Osaka")
+    # overwrite: Lightroom replaces the set XMP values, complete Lightroom data: no lookup
+    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto", State="Kyoto")
+    catalog.add_image(file, **LIGHTROOM_FIELDS)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "overwrite")
+    assert lookup.calls == []
+    assert location(file) == LIGHTROOM_FIELDS
+    assert result.stat("GeoLocation from Lightroom") == 1
+    assert result.stat("New GeoLocation from Map") == 0
+
+
+def test_overwrite_lightroom_first_lookup_for_the_rest(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # Lightroom has City and Location: from Lightroom, the other set fields are replaced by the lookup
+    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto", State="Kyoto", Country="Nippon")
+    catalog.add_image(file, City="Osaka", Location="Namba")
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "overwrite")
+    assert len(lookup.calls) == 1
+    assert location(file) == {**LOOKUP_FIELDS, "City": "Osaka", "Location": "Namba"}
+    assert result.stat("GeoLocation from Lightroom") == 1
+    assert result.stat("New GeoLocation from Map") == 1
+
+
+def test_overwrite_lightroom_same_value_not_replaced_by_lookup(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup, snapshot: Snapshot
+) -> None:
+    # Lightroom has the same values as the XMP: they stay, nothing to write
+    write_xmp(tmp_path / "src" / "a.xmp", **LIGHTROOM_XMP_FIELDS)
+    catalog.add_image(tmp_path / "src" / "a.xmp", **LIGHTROOM_FIELDS)
+    before = snapshot(tmp_path / "src")
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "overwrite", "-v")
+    assert lookup.calls == []
+    assert snapshot(tmp_path / "src") == before
+    assert result.statuses() == {"a.xmp": "SKIP"}
+
+
+def test_overwrite_lightroom_partial_same_value_kept(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # City is the same in XMP and Lightroom: kept, the other fields come from the lookup
+    file = write_xmp(tmp_path / "src" / "a.xmp", **LIGHTROOM_XMP_FIELDS)
+    catalog.add_image(file, City="Osaka")
     run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "overwrite")
-    assert location(file) == {**LOOKUP_FIELDS, "State": "Osaka"}
+    assert len(lookup.calls) == 1
+    assert location(file) == {**LOOKUP_FIELDS, "City": "Osaka"}
+
+
+def test_overwrite_lightroom_empty_value_not_cleared(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # Lightroom has no State: the lookup replaces it (an empty Lightroom value never clears)
+    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto", State="Kyoto")
+    catalog.add_image(file, City="Osaka")
+    lookup.result = {**lookup.result, "State": ""}
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "overwrite")
+    data = location(file)
+    assert data["City"] == "Osaka"
+    # no State from Lightroom and the lookup: the XMP value stays
+    assert data["State"] == "Kyoto"
+
+
+def test_overwrite_selected_field_from_lightroom(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # -f city -f overwrite: only City is replaced, from Lightroom, no lookup
+    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto", State="Kyoto")
+    catalog.add_image(file, **LIGHTROOM_FIELDS)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "city", "-f", "overwrite")
+    assert lookup.calls == []
+    assert location(file) == {"Location": "", "City": "Osaka", "State": "Kyoto", "Country": "", "CountryCode": ""}
+
+
+def test_no_overwrite_lightroom_keeps_xmp_values(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # without overwrite: Lightroom only fills empty fields
+    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto")
+    catalog.add_image(file, **LIGHTROOM_FIELDS)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert lookup.calls == []
+    assert location(file) == {**LIGHTROOM_FIELDS, "City": "Kyoto"}
+
+
+def test_overwrite_without_lightroom_unchanged(run_main: Run, tmp_path: Path, lookup: FakeLookup) -> None:
+    # without Lightroom overwrite uses the lookup as before
+    file = write_xmp(tmp_path / "src" / "a.xmp", **LIGHTROOM_XMP_FIELDS)
+    run_main("-i", tmp_path / "src", "-f", "overwrite")
+    assert len(lookup.calls) == 1
+    assert location(file) == LOOKUP_FIELDS
 
 
 # MARK: output

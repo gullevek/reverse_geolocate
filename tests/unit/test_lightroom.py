@@ -273,7 +273,8 @@ def test_find_both_forms_in_catalog(builder: LightroomCatalogBuilder, tmp_path: 
 # MARK: merge_lightroom_data
 def test_merge_fills_empty_fields() -> None:
     row = make_row(gpsLatitude=-33.85, gpsLongitude=151.21, City="Sydney", Country="Australia", CountryCode="AU")
-    assert merge_lightroom_data(EMPTY_DATA_SET, row) == {
+    merged, location_keys = merge_lightroom_data(EMPTY_DATA_SET, row)
+    assert merged == {
         "GPSLatitude": "33,51.0S",
         "GPSLongitude": "151,12.6E",
         "Location": "",
@@ -282,36 +283,76 @@ def test_merge_fills_empty_fields() -> None:
         "Country": "Australia",
         "CountryCode": "AU",
     }
+    # only location keys, not GPS
+    assert location_keys == {"City", "Country", "CountryCode"}
 
 
 def test_merge_keeps_existing_values() -> None:
     data_set = {**EMPTY_DATA_SET, "GPSLatitude": "35,30.0N", "City": "Kyoto"}
     row = make_row(gpsLatitude=1.0, gpsLongitude=2.0, City="Osaka", State="Osaka")
-    merged = merge_lightroom_data(data_set, row)
+    merged, location_keys = merge_lightroom_data(data_set, row)
     assert merged["GPSLatitude"] == "35,30.0N"
     assert merged["GPSLongitude"] == "2,0.0E"
     assert merged["City"] == "Kyoto"
     assert merged["State"] == "Osaka"
+    assert location_keys == {"State"}
+
+
+def test_merge_replace_keys() -> None:
+    # overwrite: the set fields in replace_keys are replaced, the others kept
+    data_set = {**EMPTY_DATA_SET, "City": "Kyoto", "State": "Kyoto", "Country": "Nippon"}
+    row = make_row(City="Osaka", State="Osaka", Country="Japan", Location="Namba")
+    merged, location_keys = merge_lightroom_data(data_set, row, replace_keys={"City", "Country"})
+    assert merged["City"] == "Osaka"
+    assert merged["Country"] == "Japan"
+    assert merged["State"] == "Kyoto"
+    assert merged["Location"] == "Namba"
+    assert location_keys == {"City", "Country", "Location"}
+
+
+def test_merge_replace_same_value_is_lightroom_key() -> None:
+    # the Lightroom value is the same as the XMP value: still set from Lightroom (no lookup for it)
+    data_set = {**EMPTY_DATA_SET, "City": "Osaka"}
+    merged, location_keys = merge_lightroom_data(data_set, make_row(City="Osaka"), replace_keys={"City"})
+    assert merged["City"] == "Osaka"
+    assert location_keys == {"City"}
+
+
+def test_merge_replace_empty_lightroom_value_keeps_xmp() -> None:
+    data_set = {**EMPTY_DATA_SET, "City": "Kyoto"}
+    merged, location_keys = merge_lightroom_data(data_set, make_row(City=""), replace_keys={"City"})
+    assert merged["City"] == "Kyoto"
+    assert location_keys == set()
+
+
+def test_merge_replace_keys_never_gps() -> None:
+    data_set = {**EMPTY_DATA_SET, "GPSLatitude": "35,30.0N", "GPSLongitude": "139,30.0E"}
+    row = make_row(gpsLatitude=1.0, gpsLongitude=2.0)
+    merged, _ = merge_lightroom_data(data_set, row, replace_keys={"GPSLatitude", "GPSLongitude"})
+    assert merged["GPSLatitude"] == "35,30.0N"
+    assert merged["GPSLongitude"] == "139,30.0E"
 
 
 def test_merge_empty_row() -> None:
-    assert merge_lightroom_data(EMPTY_DATA_SET, make_row()) == EMPTY_DATA_SET
+    assert merge_lightroom_data(EMPTY_DATA_SET, make_row()) == (EMPTY_DATA_SET, set())
 
 
 def test_merge_zero_gps_not_used() -> None:
     # NOTE: 0.0 is treated as "not set" (Lightroom has no GPS data)
-    merged = merge_lightroom_data(EMPTY_DATA_SET, make_row(gpsLatitude=0.0, gpsLongitude=0.0))
+    merged, _ = merge_lightroom_data(EMPTY_DATA_SET, make_row(gpsLatitude=0.0, gpsLongitude=0.0))
     assert merged["GPSLatitude"] == ""
     assert merged["GPSLongitude"] == ""
 
 
 def test_merge_empty_string_not_used() -> None:
-    assert merge_lightroom_data(EMPTY_DATA_SET, make_row(City=""))["City"] == ""
+    merged, location_keys = merge_lightroom_data(EMPTY_DATA_SET, make_row(City=""))
+    assert merged["City"] == ""
+    assert location_keys == set()
 
 
 def test_merge_returns_new_data_set() -> None:
     data_set = dict(EMPTY_DATA_SET)
-    merge_lightroom_data(data_set, make_row(City="Osaka"))
+    merge_lightroom_data(data_set, make_row(City="Osaka"), replace_keys={"City"})
     assert data_set == EMPTY_DATA_SET
 
 
