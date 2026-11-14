@@ -30,6 +30,7 @@ from reverse_geolocate.setup.configurate import read_config
 from reverse_geolocate.utils.function_collection import (
     check_overwrite,
     get_backup_file_counter,
+    get_display_path,
     is_path_excluded,
     normalize_exclude_paths,
     normalize_path,
@@ -372,18 +373,12 @@ def main():
             print(f"{'[!!!] No files found':<60}")
 
     # MARK: MAIN WORK LOOP
+    # the folder the script is called from, file paths inside it are printed relative to it
+    call_path = normalize_path(os.getcwd())
     # now we just loop through each file and work on them
     for xmp_file in work_files:
-        # get the script run location and remove that path from the xmp_file
-        # and write this new file name to a print file variable
-        script_path = os.path.dirname(os.path.realpath(__file__))
-        xmp_real_path = os.path.realpath(xmp_file)
-        try:
-            common_path = os.path.commonpath([script_path, xmp_real_path])
-            xmp_file_print = os.path.relpath(xmp_real_path, common_path)
-        except ValueError:
-            # no common path (e.g. different drives on Windows)
-            xmp_file_print = xmp_file
+        # path for the output: relative to the call folder, or as given if outside of it
+        xmp_file_print = get_display_path(xmp_file, call_path)
         if args.debug:
             print(f"---> {xmp_file} -> {xmp_file_print}: ", end="")
 
@@ -579,12 +574,19 @@ def main():
                 # must have at least the country set to write anything back
                 if maps_location["Country"]:
                     for loc in data_set_loc:
-                        # only write to XMP if overwrite check passes
-                        if check_overwrite(data_set_original[loc], loc, args.field_controls, args):
+                        # only write to XMP if overwrite check passes and the value changes
+                        # (overwrite with the same value must not write the file or create a backup)
+                        # an empty value from the lookup never replaces (clears) an existing value
+                        if (
+                            check_overwrite(data_set_original[loc], loc, args.field_controls, args)
+                            and maps_location[loc]
+                            and maps_location[loc] != data_set_original[loc]
+                        ):
                             data_set[loc] = maps_location[loc]
                             xmp.set_property(xmp_fields[loc], loc, maps_location[loc])
                             write_file = True
-                    if write_file:
+                    # only count new map lookups, cache hits are counted separately
+                    if write_file and not from_cache:
                         count["map"] += 1
                 else:
                     print("(!) Could not geo loaction data ", end="")
@@ -629,7 +631,7 @@ def main():
                     with open(xmp_file, "w", encoding="UTF-8") as fptr:
                         fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
                 else:
-                    print(f"{xmp_file_print}: [TEST] Would write {data_set} {xmp_file}", end="")
+                    print(f"{xmp_file_print}: [TEST] Would write {data_set} {xmp_file}")
                 if from_cache:
                     print(f"{xmp_file_print}: [UPDATED FROM CACHE]")
                 else:

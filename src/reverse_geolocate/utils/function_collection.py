@@ -245,6 +245,27 @@ def is_path_excluded(path: str | Path, exclude_paths: set[Path]) -> bool:
     return any(normalized.is_relative_to(exclude_path) for exclude_path in exclude_paths)
 
 
+# MARK: display path
+def get_display_path(file_path: str, base_path: Path) -> str:
+    """
+    path of a file for the output:
+    inside the base folder (eg the folder the script is called from) relative to it,
+    otherwise as given (no "../.." paths)
+
+    Args:
+        file_path (str): file path as given or found
+        base_path (Path): normalized base folder (see normalize_path)
+
+    Returns:
+        str: relative path if inside base_path, else file_path unchanged
+    """
+    normalized = normalize_path(file_path)
+    # also False for different drives on Windows
+    if normalized.is_relative_to(base_path):
+        return str(normalized.relative_to(base_path))
+    return file_path
+
+
 # MARK: get backup file counter
 def get_backup_file_counter(xmp_file: str, args: Namespace) -> int:
     """
