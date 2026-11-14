@@ -37,4 +37,23 @@ lint-fix-ty:
 test:
 	uv run pytest
 
-.PHONY: default format-check format lint lint-all lint-ruff lint-ty lint-pyright lint-fix lint-fix-ruff lint-fix-ty test
+# MARK: test container
+# full test suite in a container with the Exempi library (needed for the integration tests)
+# docker or podman, the first one found, override with: make test-container CONTAINER=podman
+# pytest arguments: make test-container TEST_ARGS="-x tests/integration"
+CONTAINER ?= $(shell command -v docker 2>/dev/null || command -v podman 2>/dev/null)
+CONTAINER_IMAGE ?= reverse-geolocate-test
+CONTAINER_FILE = tests/container/Containerfile
+TEST_ARGS ?=
+
+test-container-build:
+	@if [ -z "$(CONTAINER)" ]; then \
+		echo "No container tool found: install docker or podman, or set CONTAINER=<tool>"; \
+		exit 1; \
+	fi
+	$(CONTAINER) build --file $(CONTAINER_FILE) --tag $(CONTAINER_IMAGE) .
+
+test-container: test-container-build
+	$(CONTAINER) run --rm $(CONTAINER_IMAGE) $(TEST_ARGS)
+
+.PHONY: default format-check format lint lint-all lint-ruff lint-ty lint-pyright lint-fix lint-fix-ruff lint-fix-ty test test-container-build test-container

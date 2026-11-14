@@ -26,8 +26,18 @@ def exempi_available() -> bool:
     return True
 
 
+EXEMPI_AVAILABLE = exempi_available()
 # without Exempi the script can not be imported, do not collect the tests
-collect_ignore_glob = [] if exempi_available() else ["test_*.py"]
+collect_ignore_glob = [] if EXEMPI_AVAILABLE else ["test_*.py"]
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """without Exempi: show that the integration tests did not run and how to run them"""
+    if EXEMPI_AVAILABLE:
+        return
+    terminalreporter.section("integration tests not run", yellow=True)
+    terminalreporter.write_line("Exempi library not available: the tests in tests/integration were not collected.")
+    terminalreporter.write_line("Run the full test suite in a container (docker or podman): make test-container")
 
 
 # MARK: environment

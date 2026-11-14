@@ -1,0 +1,15 @@
+# build context for the test container (tests/container/Containerfile)
+# local environment and generated files are not copied into the image
+.git
+.venv
+dist
+build
+**/__pycache__
+**/*.py[oc]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+**/.DS_Store
+.vscode
