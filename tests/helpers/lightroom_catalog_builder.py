@@ -5,6 +5,18 @@ builds a minimal Lightroom catalog (.lrcat) for tests, with only the tables and 
 import os
 import sqlite3
 from pathlib import Path
+from typing import TypedDict, Unpack
+
+
+class LocationFields(TypedDict, total=False):
+    """location keyword arguments for LightroomCatalogBuilder.add_image (data set keys)"""
+
+    Location: str
+    City: str
+    State: str
+    Country: str
+    CountryCode: str
+
 
 # MARK: Lightroom catalog
 LIGHTROOM_SCHEMA = """
@@ -52,7 +64,7 @@ class LightroomCatalogBuilder:
         xmp_file: Path,
         gps_latitude: float | None = None,
         gps_longitude: float | None = None,
-        **location: str,
+        **location: Unpack[LocationFields],
     ) -> None:
         """
         adds an image for an XMP file: base name and folder from the XMP file path,
@@ -82,11 +94,12 @@ class LightroomCatalogBuilder:
             references: dict[str, int | None] = {}
             for key, (table, column) in LIGHTROOM_LOCATION_TABLES.items():
                 references[column] = None
-                if location.get(key, ""):
+                value = location.get(key, "")
+                if value:
                     references[column] = connection.execute(
                         # fixed table names from LIGHTROOM_LOCATION_TABLES
                         f"INSERT INTO {table} (value) VALUES (?)",
-                        (location[key],),
+                        (value,),
                     ).lastrowid
             connection.execute(
                 "INSERT INTO AgHarvestedIptcMetadata (image, locationDataOrigination, "

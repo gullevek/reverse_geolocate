@@ -11,14 +11,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from helpers.lightroom_catalog_builder import LightroomCatalogBuilder
+from helpers.lightroom_catalog_builder import LightroomCatalogBuilder, LocationFields
 from integration_helpers import TOKYO_LAT, TOKYO_LONG, FakeLookup, RunResult, read_xmp, write_xmp
 
 Run = Callable[..., RunResult]
 Snapshot = Callable[[Path], dict[Path, bytes]]
 
 LOOKUP_FIELDS = {"Location": "Jingumae", "City": "Shibuya", "State": "Tokyo", "Country": "Japan", "CountryCode": "JP"}
-LIGHTROOM_FIELDS = {"Location": "Namba", "City": "Osaka", "State": "Osaka", "Country": "Japan", "CountryCode": "JP"}
+LIGHTROOM_FIELDS: LocationFields = {
+    "Location": "Namba",
+    "City": "Osaka",
+    "State": "Osaka",
+    "Country": "Japan",
+    "CountryCode": "JP",
+}
 NO_GPS = {"GPSLatitude": "", "GPSLongitude": ""}
 
 
@@ -241,6 +247,248 @@ def test_no_catalog_in_folder(run_main: Run, tmp_path: Path, lookup: FakeLookup)
     # nothing done
     assert lookup.calls == []
     assert file.read_bytes() == before
+
+
+# MARK: not found / more than one
+def test_not_found(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup) -> None:
+    # the XMP file is not in the catalog: lookup as without Lightroom
+    catalog.add_image(tmp_path / "src" / "other.xmp", **LIGHTROOM_FIELDS)
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert "(!) Could not get data from Lightroom DB" in result.out
+    assert len(lookup.calls) == 1
+    assert location(file) == LOOKUP_FIELDS
+    assert result.statuses() == {"a.xmp": "UPDATED"}
+    assert result.stat("No Lightroom data found") == 1
+    assert result.stat("GeoLocation from Lightroom") == 0
+    assert result.stat("More than one found in Lightroom") == 0
+
+
+def test_not_found_complete_file(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    write_xmp(tmp_path / "src" / "a.xmp", **LOOKUP_FIELDS)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert lookup.calls == []
+    assert result.stat("No Lightroom data found") == 1
+    assert result.stat("Skipped") == 1
+
+
+def test_many_found_not_used(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # same base name in two catalog folders: the Lightroom data is not used, lookup instead
+    catalog.add_image(tmp_path / "one" / "a.xmp", gps_latitude=1.0, gps_longitude=1.0, City="One")
+    catalog.add_image(tmp_path / "two" / "a.xmp", gps_latitude=2.0, gps_longitude=2.0, City="Two")
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert "(!) Lightroom DB returned more than one row" in result.out
+    assert lookup.calls == [{"longitude": TOKYO_LONG, "latitude": TOKYO_LAT, "map_type": "google"}]
+    assert read_xmp(file) == {"GPSLatitude": TOKYO_LAT, "GPSLongitude": TOKYO_LONG, **LOOKUP_FIELDS}
+    assert result.stat("More than one found in Lightroom") == 1
+    assert result.stat("GeoLocation from Lightroom") == 0
+    assert result.stat("No Lightroom data found") == 0
+
+
+def test_many_found_no_gps_fails(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # the Lightroom GPS is not used either: no GPS, no lookup
+    catalog.add_image(tmp_path / "one" / "a.xmp", gps_latitude=1.0, gps_longitude=1.0)
+    catalog.add_image(tmp_path / "two" / "a.xmp", gps_latitude=2.0, gps_longitude=2.0)
+    write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert lookup.calls == []
+    assert result.statuses() == {"a.xmp": "FAILED"}
+
+
+def test_counts_over_several_files(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
+    src = tmp_path / "src"
+    catalog.add_image(
+        write_xmp(src / "1_found.xmp", **NO_GPS), gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS
+    )
+    write_xmp(src / "2_not_found.xmp")
+    write_xmp(src / "3_not_found.xmp", **LOOKUP_FIELDS)
+    catalog.add_image(tmp_path / "x" / "4_many.xmp")
+    catalog.add_image(tmp_path / "y" / "4_many.xmp")
+    write_xmp(src / "4_many.xmp")
+    result = run_main("-i", src, "-l", catalog.folder, "-v")
+    assert result.statuses() == {
+        "1_found.xmp": "UPDATED",
+        "2_not_found.xmp": "UPDATED",
+        "3_not_found.xmp": "SKIP",
+        "4_many.xmp": "UPDATED FROM CACHE",
+    }
+    assert result.stat("GeoLocation from Lightroom") == 1
+    assert result.stat("No Lightroom data found") == 2
+    assert result.stat("More than one found in Lightroom") == 1
+    assert result.stat("Updated") == 3
+
+
+# MARK: strict
+def test_strict_uses_matching_folder(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # not strict: more than one, strict: the image in the folder of the XMP file
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(tmp_path / "other" / "a.xmp", gps_latitude=1.0, gps_longitude=1.0, City="Other")
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
+    not_strict = run_main("-i", tmp_path / "src", "-l", catalog.folder, "--test")
+    assert not_strict.stat("More than one found in Lightroom") == 1
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "-s")
+    assert lookup.calls == []
+    assert read_xmp(file) == {"GPSLatitude": "35,30.0N", "GPSLongitude": "139,30.0E", **LIGHTROOM_FIELDS}
+    assert result.stat("GeoLocation from Lightroom") == 1
+    assert result.stat("More than one found in Lightroom") == 0
+
+
+def test_strict_other_folder_not_found(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    catalog.add_image(tmp_path / "other" / "a.xmp", **LIGHTROOM_FIELDS)
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    # not strict: found by name
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, "--test")
+    assert lookup.calls == []
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "--strict")
+    assert result.stat("No Lightroom data found") == 1
+    assert location(file) == LOOKUP_FIELDS
+
+
+@pytest.mark.parametrize("source", ["src", "./src/", "link", "other/../src"])
+def test_strict_path_forms(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    # relative paths, "./", "../" and symlinks match the real folder in the catalog
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, **LIGHTROOM_FIELDS)
+    (tmp_path / "link").symlink_to(tmp_path / "src")
+    (tmp_path / "other").mkdir()
+    monkeypatch.chdir(tmp_path)
+    result = run_main("-i", source, "-l", catalog.folder, "-s")
+    assert result.stat("GeoLocation from Lightroom") == 1
+    assert location(file) == LIGHTROOM_FIELDS
+
+
+# MARK: field controls
+def test_selected_field_limits_lightroom(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, **LIGHTROOM_FIELDS)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "city")
+    # only City is written, from Lightroom, no lookup needed
+    assert location(file) == {"Location": "", "City": "Osaka", "State": "", "Country": "", "CountryCode": ""}
+    assert lookup.calls == []
+
+
+def test_selected_field_gps_not_written(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
+    # NOTE: with selected fields, GPS from Lightroom is not written (GPS is not a selectable field)
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "city")
+    data = read_xmp(file)
+    assert data["City"] == "Osaka"
+    assert data["GPSLatitude"] == ""
+
+
+def test_overwrite_lookup_wins_over_xmp_lightroom_not_used(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder
+) -> None:
+    # NOTE: Lightroom only fills empty XMP fields, also with overwrite;
+    # with overwrite the set XMP fields are replaced by the lookup
+    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto")
+    catalog.add_image(file, City="Osaka", State="Osaka")
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "overwrite")
+    assert location(file) == {**LOOKUP_FIELDS, "State": "Osaka"}
+
+
+# MARK: output
+def test_debug_output(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "--debug")
+    assert f"### USE Lightroom {catalog.path}" in result.lines
+    assert any("### LightroomDB: (" in line and "'Osaka'" in line for line in result.lines)
+    assert "### -> LR: City => Osaka" in result.lines
+    # complete after the Lightroom data: no lookup
+    assert "Lightroom data use: True, Lightroom data ok: True" in result.out
+
+
+def test_debug_output_not_found(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
+    write_xmp(tmp_path / "src" / "a.xmp", **LOOKUP_FIELDS)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "--debug")
+    assert "Lightroom data use: True, Lightroom data ok: False" in result.out
+    assert "### LightroomDB:" not in result.out
+
+
+def test_debug_output_many_found(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
+    # the first image is shown in the debug output, but not used
+    catalog.add_image(tmp_path / "one" / "a.xmp", City="One")
+    catalog.add_image(tmp_path / "two" / "a.xmp", City="Two")
+    write_xmp(tmp_path / "src" / "a.xmp", **LOOKUP_FIELDS)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "--debug")
+    assert "### LightroomDB: (" in result.out
+    assert "### -> LR:" not in result.out
+    assert "Lightroom data use: True, Lightroom data ok: False" in result.out
+
+
+def test_debug_without_lightroom(run_main: Run, tmp_path: Path) -> None:
+    write_xmp(tmp_path / "src" / "a.xmp", **LOOKUP_FIELDS)
+    result = run_main("-i", tmp_path / "src", "--debug")
+    assert "Lightroom data use: False, Lightroom data ok: False" in result.out
+    assert "### USE Lightroom" not in result.out
+
+
+def test_statistics_only_with_lightroom(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
+    write_xmp(tmp_path / "src" / "a.xmp", **LOOKUP_FIELDS)
+    without = run_main("-i", tmp_path / "src")
+    with_lightroom = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    for name in ("GeoLocation from Lightroom", "No Lightroom data found", "More than one found in Lightroom"):
+        assert name not in without.out
+        assert name in with_lightroom.out
+
+
+def test_read_only_with_lightroom(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, snapshot: Snapshot
+) -> None:
+    # read only: the catalog is opened (must exist) but not used, no Lightroom statistics
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
+    before = snapshot(tmp_path / "src")
+    result = run_main("-r", "-i", tmp_path / "src", "-l", catalog.folder)
+    assert result.exit_code is None
+    assert result.table_rows()[0][1:8] == ["", "", "", "", "", "", ""]
+    assert "Lightroom" not in result.out
+    assert snapshot(tmp_path / "src") == before
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="file permissions are not enforced (Windows or root)",
+)
+def test_catalog_closed_after_critical_error(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from reverse_geolocate.utils.lightroom import LightroomCatalog
+
+    closed: list[str] = []
+    real_close = LightroomCatalog.close
+
+    def spy_close(self: LightroomCatalog) -> None:
+        closed.append(self.database)
+        real_close(self)
+
+    monkeypatch.setattr(LightroomCatalog, "close", spy_close)
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
+    file.chmod(0o444)
+    try:
+        result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    finally:
+        file.chmod(0o644)
+    assert result.exit_code == 1
+    assert closed == [str(catalog.path)]
 
 
 # __END__
