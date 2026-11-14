@@ -13,6 +13,8 @@ cache_latin_letters: dict[str, bool] = {}
 def shorten_string(string: str, width: int, placeholder: str = "..") -> str:
     """
     shortens a string to width and attached placeholder
+    if the width is equal or less than the placeholder width, the placeholder is not used
+    and the string is only cut to width
 
     Args:
         string(str): string to shorten
@@ -26,6 +28,9 @@ def shorten_string(string: str, width: int, placeholder: str = "..") -> str:
     string_length_cjk = string_len_cjk(str(string))
     # if double byte width is too big
     if string_length_cjk > width:
+        # no room for any text next to the placeholder, cut without placeholder
+        if width <= string_len_cjk(placeholder):
+            placeholder = ""
         # set current length and output string
         cur_len = 0
         out_string = ""
@@ -34,7 +39,7 @@ def shorten_string(string: str, width: int, placeholder: str = "..") -> str:
             # set the current length if we add the character
             cur_len += 2 if unicodedata.east_asian_width(char) in "WF" else 1
             # if the new length is smaller than the output length to shorten too add the char
-            if cur_len <= (width - len(placeholder)):
+            if cur_len <= (width - string_len_cjk(placeholder)):
                 out_string += char
         # return string with new width and placeholder
         return f"{out_string}{placeholder}"
