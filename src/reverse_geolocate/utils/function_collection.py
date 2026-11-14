@@ -180,18 +180,19 @@ def output_list_width_adjust(args: Namespace) -> dict[str, int]:
                         resize == -1 and current_columns < get_terminal_size().columns
                     ):
                         # check that we are not OVER but one under
+                        # growing: always cut the path back, so we end one under the terminal width
+                        # shrinking: widen the path to one under, if it stays above the minimum width
                         width_up = get_terminal_size().columns - current_columns - 1
-                        if (
-                            (resize == 1 and width_up < 0)
-                            or (resize == -1 and width_up != 0)
-                            and format_length["path"] + width_up >= resize_width_min
+                        if (resize == 1 and width_up < 0) or (
+                            (resize == -1 and width_up != 0) and format_length["path"] + width_up >= resize_width_min
                         ):
                             format_length["path"] += width_up
                         abort = True
                         break
                 if abort:
                     break
-            if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 > get_terminal_size().columns:
+            # warn if not at least one under the terminal width (same target as above)
+            if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 >= get_terminal_size().columns:
                 print("[!!!] Screen layout might be skewed. Increase Terminal width")
     return format_length
 
