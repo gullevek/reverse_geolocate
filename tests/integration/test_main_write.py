@@ -3,6 +3,9 @@ integration tests for main() in write mode: lookup, writing, backups, field cont
 the map lookup is a fake (see FakeLookup), the XMP files are read and written with Exempi
 """
 
+import errno
+import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -574,6 +577,86 @@ def test_debug_output(run_main: Run, tmp_path: Path) -> None:
     assert f"---> {file} -> {file}: " in result.out
     assert "### Map Location (google):" in result.out
     assert "### *** CACHE:" in result.out
+
+
+# MARK: write errors
+needs_permissions = pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="file permissions are not enforced (Windows or root)",
+)
+
+
+@needs_permissions
+def test_write_protected_file_stops_run(run_main: Run, tmp_path: Path, lookup: FakeLookup, snapshot: Snapshot) -> None:
+    first = write_xmp(tmp_path / "src" / "1.xmp")
+    protected = write_xmp(tmp_path / "src" / "2.xmp", GPSLatitude=NEAR_LAT)
+    third = write_xmp(tmp_path / "src" / "3.xmp", GPSLatitude=FAR_LAT)
+    protected.chmod(0o444)
+    protected_before = protected.read_bytes()
+    third_before = third.read_bytes()
+    try:
+        result = run_main("-i", tmp_path / "src")
+    finally:
+        protected.chmod(0o644)
+    # critical: exit code 1, the run stops after the file that could not be written
+    assert result.exit_code == 1
+    assert f"(!!!) CRITICAL: Could not write the XMP file {protected}: no write permission" in result.lines
+    assert "(!!!) Run stopped, the remaining files are not processed" in result.lines
+    assert result.statuses() == {"1.xmp": "UPDATED"}
+    assert location(first) == LOOKUP_FIELDS
+    # the protected file and the file after it are unchanged, no lookup for the third file
+    assert protected.read_bytes() == protected_before
+    assert third.read_bytes() == third_before
+    assert [call["latitude"] for call in lookup.calls] == [TOKYO_LAT, NEAR_LAT]
+    assert not (tmp_path / "src" / "2.BK.1.xmp").exists()
+    # the summary shows what was done until then
+    assert result.stat("XMP Files found") == 3
+    assert result.stat("Updated") == 1
+
+
+def test_disk_full_stops_run(run_main: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from reverse_geolocate.utils import xmp_data
+
+    def disk_full(*args: object, **kwargs: object) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    file = write_xmp(tmp_path / "src" / "1.xmp")
+    write_xmp(tmp_path / "src" / "2.xmp")
+    before = file.read_bytes()
+    monkeypatch.setattr(xmp_data.os, "replace", disk_full)
+    result = run_main("-i", tmp_path / "src")
+    assert result.exit_code == 1
+    assert f"(!!!) CRITICAL: Could not write the XMP file {file}: No space left on device" in result.lines
+    assert result.statuses() == {}
+    assert file.read_bytes() == before
+    assert sorted(path.name for path in (tmp_path / "src").iterdir()) == ["1.xmp", "2.xmp"]
+
+
+@needs_permissions
+@pytest.mark.parametrize("argv", [["--test"], ["-r"]])
+def test_write_protected_file_no_write_no_error(run_main: Run, tmp_path: Path, argv: list[str]) -> None:
+    # test and read only mode do not write: a write protected file is no error
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    file.chmod(0o444)
+    try:
+        result = run_main("-i", tmp_path / "src", *argv)
+    finally:
+        file.chmod(0o644)
+    assert result.exit_code is None
+    assert "CRITICAL" not in result.out
+
+
+@needs_permissions
+def test_write_protected_file_skipped_no_error(run_main: Run, tmp_path: Path) -> None:
+    # nothing to write for a complete file: no error
+    file = write_xmp(tmp_path / "src" / "a.xmp", **LOOKUP_FIELDS)
+    file.chmod(0o444)
+    try:
+        result = run_main("-i", tmp_path / "src")
+    finally:
+        file.chmod(0o644)
+    assert result.exit_code is None
+    assert result.stat("Skipped") == 1
 
 
 # MARK: error exits

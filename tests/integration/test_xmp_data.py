@@ -3,8 +3,10 @@ tests for reverse_geolocate.utils.xmp_data: read the data set from XMP files, wr
 needs the Exempi library (in tests/integration, not collected without Exempi, see conftest.py)
 """
 
+import errno
 import os
 import shutil
+import stat
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -13,7 +15,8 @@ import pytest
 from integration_helpers import SAMPLE_FILES, TOKYO_LAT, TOKYO_LONG, read_xmp, write_xmp
 from libxmp import XMPMeta, consts
 
-from reverse_geolocate.utils.xmp_data import XMP_FIELDS, XmpReadError, read_xmp_file, write_xmp_file
+from reverse_geolocate.utils import xmp_data
+from reverse_geolocate.utils.xmp_data import XMP_FIELDS, XmpReadError, XmpWriteError, read_xmp_file, write_xmp_file
 
 NO_DEBUG = Namespace(debug=False)
 FULL = {"Location": "Jingumae", "City": "Shibuya", "State": "Tokyo", "Country": "Japan", "CountryCode": "JP"}
@@ -229,6 +232,146 @@ def test_write_debug_backup_output(folder: Path, capsys: pytest.CaptureFixture[s
     xmp = change_city(file, "Kyoto")
     write_xmp_file(xmp, str(file), backup=True, args=Namespace(debug=True))
     assert f"#### **** File: {file}, Backups: [], Counter: 1" in capsys.readouterr().out
+
+
+# MARK: write errors
+needs_permissions = pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="file permissions are not enforced (Windows or root)",
+)
+
+
+def disk_full(*args: object, **kwargs: object) -> None:
+    raise OSError(errno.ENOSPC, "No space left on device")
+
+
+def test_write_no_temporary_files_left(folder: Path) -> None:
+    file = write_xmp(folder / "a.xmp")
+    xmp = change_city(file, "Kyoto")
+    write_xmp_file(xmp, str(file), backup=True, args=NO_DEBUG)
+    assert sorted(path.name for path in folder.iterdir()) == ["a.BK.1.xmp", "a.xmp"]
+
+
+def test_write_keeps_file_mode(folder: Path) -> None:
+    file = write_xmp(folder / "a.xmp")
+    file.chmod(0o640)
+    xmp = change_city(file, "Kyoto")
+    write_xmp_file(xmp, str(file), backup=False, args=NO_DEBUG)
+    assert stat.S_IMODE(file.stat().st_mode) == 0o640
+
+
+def test_write_symlink(folder: Path) -> None:
+    # the file the symlink points to is written, the symlink stays
+    target = write_xmp(folder / "target" / "a.xmp")
+    link = folder / "link.xmp"
+    link.symlink_to(target)
+    xmp = change_city(link, "Kyoto")
+    write_xmp_file(xmp, str(link), backup=False, args=NO_DEBUG)
+    assert link.is_symlink()
+    assert read_xmp(target)["City"] == "Kyoto"
+
+
+@needs_permissions
+@pytest.mark.parametrize("backup", [True, False])
+def test_write_protected_file(folder: Path, backup: bool) -> None:
+    file = write_xmp(folder / "a.xmp", City="Osaka")
+    xmp = change_city(file, "Kyoto")
+    before = file.read_bytes()
+    file.chmod(0o444)
+    try:
+        with pytest.raises(XmpWriteError, match="no write permission") as exc_info:
+            write_xmp_file(xmp, str(file), backup=backup, args=NO_DEBUG)
+    finally:
+        file.chmod(0o644)
+    assert exc_info.value.xmp_file == str(file)
+    assert exc_info.value.reason == "no write permission"
+    # unchanged, no backup, no temporary file (also not replaced via the folder)
+    assert file.read_bytes() == before
+    assert [path.name for path in folder.iterdir()] == ["a.xmp"]
+
+
+@needs_permissions
+@pytest.mark.parametrize("backup", [True, False])
+def test_write_protected_folder(folder: Path, backup: bool) -> None:
+    file = write_xmp(folder / "a.xmp", City="Osaka")
+    xmp = change_city(file, "Kyoto")
+    before = file.read_bytes()
+    folder.chmod(0o555)
+    try:
+        with pytest.raises(XmpWriteError, match="Permission denied"):
+            write_xmp_file(xmp, str(file), backup=backup, args=NO_DEBUG)
+    finally:
+        folder.chmod(0o755)
+    assert file.read_bytes() == before
+    assert [path.name for path in folder.iterdir()] == ["a.xmp"]
+
+
+@pytest.mark.parametrize("backup", [True, False])
+def test_write_disk_full(folder: Path, monkeypatch: pytest.MonkeyPatch, backup: bool) -> None:
+    # the temporary file is written, replacing the file fails
+    file = write_xmp(folder / "a.xmp", City="Osaka")
+    xmp = change_city(file, "Kyoto")
+    before = file.read_bytes()
+    monkeypatch.setattr(xmp_data.os, "replace", disk_full)
+    with pytest.raises(XmpWriteError, match="No space left on device"):
+        write_xmp_file(xmp, str(file), backup=backup, args=NO_DEBUG)
+    # the original is complete, the temporary file and the backup are removed
+    assert file.read_bytes() == before
+    assert [path.name for path in folder.iterdir()] == ["a.xmp"]
+
+
+def test_write_disk_full_while_writing(folder: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    file = write_xmp(folder / "a.xmp", City="Osaka")
+    xmp = change_city(file, "Kyoto")
+    before = file.read_bytes()
+    real_fdopen = os.fdopen
+
+    def fdopen_disk_full(fd: int, *args: object, **kwargs: object) -> object:
+        # the temporary file exists, writing to it fails
+        real_fdopen(fd).close()
+        disk_full()
+        return None
+
+    monkeypatch.setattr(xmp_data.os, "fdopen", fdopen_disk_full)
+    with pytest.raises(XmpWriteError, match="No space left on device"):
+        write_xmp_file(xmp, str(file), backup=True, args=NO_DEBUG)
+    assert file.read_bytes() == before
+    assert [path.name for path in folder.iterdir()] == ["a.xmp"]
+
+
+def test_write_disk_full_backup(folder: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    file = write_xmp(folder / "a.xmp", City="Osaka")
+    xmp = change_city(file, "Kyoto")
+    before = file.read_bytes()
+
+    def partial_copy(source: str, destination: str) -> None:
+        # a partial backup is written, then the disk is full
+        Path(destination).write_text("partial", encoding="UTF-8")
+        disk_full()
+
+    monkeypatch.setattr(xmp_data, "copyfile", partial_copy)
+    with pytest.raises(XmpWriteError, match="No space left on device"):
+        write_xmp_file(xmp, str(file), backup=True, args=NO_DEBUG)
+    # the partial backup is removed, the file is unchanged
+    assert file.read_bytes() == before
+    assert [path.name for path in folder.iterdir()] == ["a.xmp"]
+
+
+def test_write_existing_backups_kept_on_error(folder: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    file = write_xmp(folder / "a.xmp")
+    (folder / "a.BK.1.xmp").write_text("old backup", encoding="UTF-8")
+    xmp = change_city(file, "Kyoto")
+    monkeypatch.setattr(xmp_data.os, "replace", disk_full)
+    with pytest.raises(XmpWriteError):
+        write_xmp_file(xmp, str(file), backup=True, args=NO_DEBUG)
+    # only the new backup (BK.2) is removed
+    assert sorted(path.name for path in folder.iterdir()) == ["a.BK.1.xmp", "a.xmp"]
+    assert (folder / "a.BK.1.xmp").read_text(encoding="UTF-8") == "old backup"
+
+
+def test_write_error_message() -> None:
+    error = XmpWriteError("/a/b.xmp", "no write permission")
+    assert str(error) == "/a/b.xmp: no write permission"
 
 
 # __END__
