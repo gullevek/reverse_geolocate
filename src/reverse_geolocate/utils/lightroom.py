@@ -204,6 +204,27 @@ def folder_key_catalog(row: sqlite3.Row) -> str:
     return unicodedata.normalize("NFC", f"{row['absolutePath']}{row['pathFromRoot']}")
 
 
+def lightroom_gps(row: sqlite3.Row) -> tuple[float, float] | None:
+    """
+    the GPS coordinates of a Lightroom image, only as a complete pair:
+    - no value (NULL) for latitude or longitude: not set, a half pair is never used
+    - 0.0 is a valid coordinate (equator, prime meridian)
+    - both exactly 0.0 ("Null Island") is not set: a common placeholder for missing GPS data
+
+    Args:
+        row (sqlite3.Row): Lightroom image data (see LightroomCatalog.find)
+
+    Returns:
+        tuple[float, float] | None: latitude, longitude or None if not set
+    """
+    latitude, longitude = row["gpsLatitude"], row["gpsLongitude"]
+    if latitude is None or longitude is None:
+        return None
+    if float(latitude) == 0.0 and float(longitude) == 0.0:
+        return None
+    return float(latitude), float(longitude)
+
+
 def merge_lightroom_data(
     data_set: dict[str, str],
     row: sqlite3.Row,
@@ -212,7 +233,8 @@ def merge_lightroom_data(
 ) -> tuple[dict[str, str], set[str]]:
     """
     merges the Lightroom data into an XMP data set:
-    - GPS: only empty fields are filled, existing GPS is never replaced
+    - GPS: only empty fields are filled, existing GPS is never replaced,
+      only a complete Lightroom GPS pair is used (see lightroom_gps)
     - location fields: empty fields are filled, set fields only if in replace_keys (overwrite)
     - empty Lightroom values are never used
 
@@ -230,10 +252,13 @@ def merge_lightroom_data(
     merged = data_set.copy()
     # Lightroom stores GPS as decimal number (REAL),
     # the XMP uses the Degree,Min.Sec[NSEW] format
-    if row["gpsLatitude"] and not merged["GPSLatitude"]:
-        merged["GPSLatitude"] = convert_lat_to_dms(float(row["gpsLatitude"]))
-    if row["gpsLongitude"] and not merged["GPSLongitude"]:
-        merged["GPSLongitude"] = convert_long_to_dms(float(row["gpsLongitude"]))
+    gps = lightroom_gps(row)
+    if gps is not None:
+        latitude, longitude = gps
+        if not merged["GPSLatitude"]:
+            merged["GPSLatitude"] = convert_lat_to_dms(latitude)
+        if not merged["GPSLongitude"]:
+            merged["GPSLongitude"] = convert_long_to_dms(longitude)
     location_keys: set[str] = set()
     for key in LOCATION_KEYS:
         if row[key] and (not merged[key] or key in replace_keys):

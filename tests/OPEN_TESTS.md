@@ -4,7 +4,7 @@ State of the test suite and what is still missing, so it can be picked up later.
 
 ## Current state
 
-- 1498 tests (unit + integration), 100% line and branch coverage of `src/reverse_geolocate`
+- 1520 tests (unit + integration), 100% line and branch coverage of `src/reverse_geolocate`
 - `tests/unit`: no Exempi needed
 - `tests/integration`: needs the Exempi library (`main()`, XMP read/write, command line);
   without Exempi these tests are not collected and pytest shows a hint
@@ -57,11 +57,10 @@ The points below are cases and environments that are not tested yet.
 
 ## 4. Open decisions (behaviour only recorded with `NOTE` in the tests)
 
-- [ ] **Lightroom GPS 0.0 is "not set"** (`tests/unit/test_lightroom.py`):
-      `merge_lightroom_data` ignores a Lightroom latitude or longitude of exactly `0.0`.
-      A photo on the equator (latitude 0) or the prime meridian (longitude 0) loses this coordinate,
-      the other one is still taken, so the XMP can get only half of the GPS data.
-      Probably both values should be checked together (`NULL` = not set, `0.0` is a valid coordinate).
+- [x] **Lightroom GPS 0.0 is "not set"**: fixed (`lightroom_gps` in `utils/lightroom.py`).
+      Lightroom GPS is only used as a complete pair: `NULL` is not set, a half pair is not used,
+      `0.0` is a valid coordinate (equator, prime meridian), both exactly `0.0` ("Null Island")
+      is treated as a placeholder for missing GPS data.
 - [ ] **OpenStreetMap vs. Google results** (`tests/unit/test_geolocate.py`):
       OpenStreetMap success leaves `status` empty (Google: `"OK"`), and returns the country code
       in lower case (`jp`, Google: `JP`). Decide if both should be the same (e.g. upper case country code).

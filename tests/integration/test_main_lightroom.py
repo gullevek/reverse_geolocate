@@ -66,6 +66,51 @@ def test_lightroom_gps_written_with_lookup(
     assert read_xmp(file) == {"GPSLatitude": "33,51.0S", "GPSLongitude": "151,12.6E", **LOOKUP_FIELDS}
 
 
+@pytest.mark.parametrize(
+    ("latitude", "longitude", "xmp_latitude", "xmp_longitude"),
+    [
+        # equator, prime meridian: 0.0 is a valid coordinate
+        (0.0, 32.5, "0,0.0N", "32,30.0E"),
+        (51.48, 0.0, "51,28.8N", "0,0.0E"),
+    ],
+)
+def test_lightroom_gps_zero_coordinate(
+    run_main: Run,
+    tmp_path: Path,
+    catalog: LightroomCatalogBuilder,
+    lookup: FakeLookup,
+    latitude: float,
+    longitude: float,
+    xmp_latitude: str,
+    xmp_longitude: str,
+) -> None:
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(file, gps_latitude=latitude, gps_longitude=longitude)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert lookup.calls == [{"longitude": xmp_longitude, "latitude": xmp_latitude, "map_type": "google"}]
+    assert read_xmp(file) == {"GPSLatitude": xmp_latitude, "GPSLongitude": xmp_longitude, **LOOKUP_FIELDS}
+    assert result.statuses() == {"a.xmp": "UPDATED"}
+
+
+@pytest.mark.parametrize(("latitude", "longitude"), [(0.0, 0.0), (35.5, None), (None, 139.5)])
+def test_lightroom_gps_not_set(
+    run_main: Run,
+    tmp_path: Path,
+    catalog: LightroomCatalogBuilder,
+    lookup: FakeLookup,
+    latitude: float | None,
+    longitude: float | None,
+) -> None:
+    # "Null Island" placeholder or a half pair: no GPS from Lightroom, no lookup
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    before = file.read_bytes()
+    catalog.add_image(file, gps_latitude=latitude, gps_longitude=longitude)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert lookup.calls == []
+    assert file.read_bytes() == before
+    assert result.statuses() == {"a.xmp": "FAILED"}
+
+
 def test_lightroom_data_written_if_lookup_fails(
     run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
 ) -> None:

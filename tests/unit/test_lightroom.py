@@ -17,6 +17,7 @@ from reverse_geolocate.utils.lightroom import (
     LightroomCatalog,
     LightroomError,
     find_catalog_file,
+    lightroom_gps,
     merge_lightroom_data,
 )
 
@@ -337,11 +338,67 @@ def test_merge_empty_row() -> None:
     assert merge_lightroom_data(EMPTY_DATA_SET, make_row()) == (EMPTY_DATA_SET, set())
 
 
-def test_merge_zero_gps_not_used() -> None:
-    # NOTE: 0.0 is treated as "not set" (Lightroom has no GPS data)
+# MARK: Lightroom GPS
+@pytest.mark.parametrize(
+    ("latitude", "longitude", "expected"),
+    [
+        (35.5, 139.5, (35.5, 139.5)),
+        (-33.85, 151.21, (-33.85, 151.21)),
+        # 0.0 is a valid coordinate: equator, prime meridian
+        (0.0, 32.5, (0.0, 32.5)),
+        (51.48, 0.0, (51.48, 0.0)),
+        (0.0, -78.5, (0.0, -78.5)),
+        # integer values from the catalog
+        (0, 32, (0.0, 32.0)),
+        # not set (NULL), also a half pair
+        (None, None, None),
+        (None, 139.5, None),
+        (35.5, None, None),
+        (None, 0.0, None),
+        # both 0.0: placeholder for missing GPS data ("Null Island")
+        (0.0, 0.0, None),
+        (0, 0, None),
+    ],
+)
+def test_lightroom_gps(latitude: float | None, longitude: float | None, expected: tuple[float, float] | None) -> None:
+    result = lightroom_gps(make_row(gpsLatitude=latitude, gpsLongitude=longitude))
+    assert result == expected
+    if result is not None:
+        assert all(isinstance(value, float) for value in result)
+
+
+def test_merge_gps_equator() -> None:
+    merged, _ = merge_lightroom_data(EMPTY_DATA_SET, make_row(gpsLatitude=0.0, gpsLongitude=32.5))
+    assert merged["GPSLatitude"] == "0,0.0N"
+    assert merged["GPSLongitude"] == "32,30.0E"
+
+
+def test_merge_gps_prime_meridian() -> None:
+    merged, _ = merge_lightroom_data(EMPTY_DATA_SET, make_row(gpsLatitude=51.48, gpsLongitude=0.0))
+    assert merged["GPSLatitude"] == "51,28.8N"
+    assert merged["GPSLongitude"] == "0,0.0E"
+
+
+def test_merge_gps_null_island_not_used() -> None:
     merged, _ = merge_lightroom_data(EMPTY_DATA_SET, make_row(gpsLatitude=0.0, gpsLongitude=0.0))
     assert merged["GPSLatitude"] == ""
     assert merged["GPSLongitude"] == ""
+
+
+@pytest.mark.parametrize(("latitude", "longitude"), [(None, 32.5), (35.5, None)])
+def test_merge_gps_half_pair_not_used(latitude: float | None, longitude: float | None) -> None:
+    # the XMP never gets only half of the coordinates from Lightroom
+    merged, _ = merge_lightroom_data(EMPTY_DATA_SET, make_row(gpsLatitude=latitude, gpsLongitude=longitude))
+    assert merged["GPSLatitude"] == ""
+    assert merged["GPSLongitude"] == ""
+
+
+def test_merge_gps_fills_missing_xmp_half() -> None:
+    # the XMP has only a latitude: the missing longitude is filled, the latitude is kept
+    data_set = {**EMPTY_DATA_SET, "GPSLatitude": "35,30.0N"}
+    merged, _ = merge_lightroom_data(data_set, make_row(gpsLatitude=1.0, gpsLongitude=139.5))
+    assert merged["GPSLatitude"] == "35,30.0N"
+    assert merged["GPSLongitude"] == "139,30.0E"
 
 
 def test_merge_empty_string_not_used() -> None:
