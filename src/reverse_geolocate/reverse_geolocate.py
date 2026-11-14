@@ -18,6 +18,7 @@ import os
 import sqlite3
 import sys
 from math import ceil
+from pathlib import Path
 from shutil import copyfile
 from typing import Literal, cast
 
@@ -29,6 +30,9 @@ from reverse_geolocate.setup.configurate import read_config
 from reverse_geolocate.utils.function_collection import (
     check_overwrite,
     get_backup_file_counter,
+    is_path_excluded,
+    normalize_exclude_paths,
+    normalize_path,
     output_list_width_adjust,
 )
 from reverse_geolocate.utils.geolocate import reverse_geolocate
@@ -214,41 +218,54 @@ def main():
     # (WritableDirFolder action always stores a list of str)
     xmp_sources: list[str] = [str(source) for source in args.xmp_sources]
     exclude_sources: list[str] = [str(source) for source in args.exclude_sources]
-    # exclude folders without trailing separator, build once and not for every file
-    exclude_folders: set[str] = {source.rstrip(os.sep) for source in exclude_sources}
+    # normalized absolute exclude paths, build once and not for every file
+    # an excluded folder also excludes all its sub folders
+    exclude_paths = normalize_exclude_paths(exclude_sources)
+    # normalized paths of the work files, so the same file is only added once,
+    # also if given in a different form (relative/absolute, "./", "//", symlink, ...)
+    # work_files keeps the paths as found, for the output
+    work_files_normalized: set[Path] = set()
+
+    def add_work_file(file_path: str) -> None:
+        """add a file to the work files, if it is not already in there"""
+        normalized = normalize_path(file_path)
+        if normalized in work_files_normalized:
+            return
+        work_files_normalized.add(normalized)
+        work_files.append(file_path)
+        count["all"] += 1
 
     # MARK: read data
     # loop through the xmp_sources (folder or files)
     # and read in the XMP data for LAT/LONG, other data
     for xmp_file_source in xmp_sources:
+        # skip excluded sources (folder or file), also if inside an excluded folder
+        if is_path_excluded(xmp_file_source, exclude_paths):
+            continue
         # if folder, open and loop
         # NOTE: we do check for folders in there, if there are we recourse traverse them
-        # also check that folder is not in exclude list
-        if os.path.isdir(xmp_file_source) and xmp_file_source.rstrip(os.sep) not in exclude_folders:
+        if os.path.isdir(xmp_file_source):
             # open folder and look for any .xmp files and push them into holding array
             # if there are folders, dive into them
-            # or glob glob all .xmp files + directory
-            for root, _, files in os.walk(xmp_file_source):
+            for root, folders, files in os.walk(xmp_file_source):
+                # do not walk into excluded sub folders, sorted for a stable order
+                folders[:] = sorted(
+                    folder for folder in folders if not is_path_excluded(os.path.join(root, folder), exclude_paths)
+                )
                 for file in sorted(files):
                     # 0) has an .xmp extension, in any case (.xmp, .XMP, .Xmp, ...)
                     # 1) but has no .BK. inside
                     # 2) file is not in exclude list
-                    # 3) full folder is not in exclude list
+                    # (add_work_file skips files already added)
                     file_path = os.path.join(root, file)
                     if (
                         file.lower().endswith(".xmp")
                         and ".BK." not in file
-                        and file_path not in exclude_sources
-                        and root.rstrip(os.sep) not in exclude_folders
-                        and file_path not in work_files
+                        and not is_path_excluded(file_path, exclude_paths)
                     ):
-                        work_files.append(file_path)
-                        count["all"] += 1
+                        add_work_file(file_path)
         else:
-            # not already added to list and not in the exclude list either
-            if xmp_file_source not in work_files and xmp_file_source not in exclude_sources:
-                work_files.append(xmp_file_source)
-                count["all"] += 1
+            add_work_file(xmp_file_source)
 
     # MARK: work on the files
     if args.debug:

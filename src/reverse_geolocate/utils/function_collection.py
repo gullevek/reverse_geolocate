@@ -7,6 +7,7 @@ import os
 import re
 from argparse import Namespace
 from math import ceil
+from pathlib import Path
 from shutil import get_terminal_size
 
 
@@ -196,6 +197,52 @@ def output_list_width_adjust(args: Namespace) -> dict[str, int]:
             if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 >= get_terminal_size().columns:
                 print("[!!!] Screen layout might be skewed. Increase Terminal width")
     return format_length
+
+
+# MARK: path compare
+def normalize_path(path: str | Path) -> Path:
+    """
+    normalized path for comparing: absolute, symlinks resolved,
+    without "//", "./", "../" and trailing separators
+    the path does not need to exist
+
+    Args:
+        path (str | Path): relative or absolute path
+
+    Returns:
+        Path: normalized absolute path
+    """
+    return Path(path).resolve()
+
+
+def normalize_exclude_paths(exclude_sources: list[str]) -> set[Path]:
+    """
+    normalizes the -x exclude sources for is_path_excluded
+
+    Args:
+        exclude_sources (list[str]): exclude folders and files as given on the command line
+
+    Returns:
+        set[Path]: normalized exclude paths
+    """
+    return {normalize_path(source) for source in exclude_sources}
+
+
+def is_path_excluded(path: str | Path, exclude_paths: set[Path]) -> bool:
+    """
+    checks if a path is excluded: it is one of the exclude paths or inside an excluded folder
+    (sub folders of an excluded folder are excluded too)
+    only whole names match: "/a/b" excludes "/a/b/c" but not "/a/bc"
+
+    Args:
+        path (str | Path): folder or file to check, relative or absolute
+        exclude_paths (set[Path]): normalized paths from normalize_exclude_paths
+
+    Returns:
+        bool: True if the path is excluded
+    """
+    normalized = normalize_path(path)
+    return any(normalized.is_relative_to(exclude_path) for exclude_path in exclude_paths)
 
 
 # MARK: get backup file counter
