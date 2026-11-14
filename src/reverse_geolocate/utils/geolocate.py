@@ -3,6 +3,7 @@ reverse geolacte functions
 """
 
 import argparse
+from typing import cast
 
 import requests
 
@@ -109,12 +110,20 @@ def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: a
     url = f"{base}"
     # timeout in seconds
     timeout = 60
-    response = requests.get(url, params=payload, timeout=timeout)
+    # send it to openstreetmap, network and JSON errors are returned as status ERROR
+    try:
+        response = requests.get(url, params=payload, timeout=timeout)
+        response_json = response.json()
+    except (requests.exceptions.RequestException, ValueError) as e:
+        geolocation["status"] = "ERROR"
+        geolocation["error_message"] = str(e)
+        print(f"Error in request: {geolocation['status']} {geolocation['error_message']}")
+        return geolocation
     # debug output
     if args.debug:
         print(f"OpenStreetMap search for Lat: {latitude}, Long: {longitude}")
     if args.debug and args.verbose >= 2:
-        print(f"OpenStreetMap response: {response} => JSON: {response.json()}")
+        print(f"OpenStreetMap response: {response} => JSON: {response_json}")
     # type map
     # Country to Location and for each in order of priority
     type_map = {
@@ -125,9 +134,9 @@ def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: a
         "Location": ["county", "town", "suburb", "hamlet", "neighbourhood", "road"],
     }
     # if not error
-    if "error" not in response.json():
-        # get address block
-        addr = response.json()["address"]
+    if "error" not in response_json:
+        # get address block, can be missing (or null) if nothing was found
+        addr = cast(dict[str, str], response_json.get("address") or {})
         # loop for locations
         for loc_index, sub_index in type_map.items():
             for index in sub_index:
@@ -139,7 +148,7 @@ def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: a
         #             geolocation[loc_index] = addr[index]
     else:
         geolocation["status"] = "ERROR"
-        geolocation["error_message"] = response.json()["error"]
+        geolocation["error_message"] = response_json["error"]
         print(f"Error in request: {geolocation['error_message']}")
     # return
     return geolocation
