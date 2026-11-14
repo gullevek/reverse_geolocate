@@ -6,8 +6,9 @@ uses a minimal Lightroom catalog in a temporary folder (see LightroomCatalogBuil
 import os
 import sqlite3
 import sys
+import unicodedata
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 from helpers.lightroom_catalog_builder import LightroomCatalogBuilder
@@ -228,6 +229,45 @@ def test_find_strict_path_forms(
     with LightroomCatalog.open(str(builder.folder), strict=True) as catalog:
         for path in ("photos/a.xmp", "./photos//a.xmp", "other/../photos/a.xmp", "link/a.xmp"):
             assert catalog.find(path).status == "found", path
+
+
+# MARK: find, decomposed (NFD) names
+UnicodeForm = Literal["NFC", "NFD"]
+NFC: UnicodeForm = "NFC"
+NFD: UnicodeForm = "NFD"
+
+
+@pytest.mark.parametrize(("catalog_form", "file_form"), [(NFC, NFD), (NFD, NFC), (NFC, NFC), (NFD, NFD)])
+def test_find_name_any_unicode_form(
+    builder: LightroomCatalogBuilder, tmp_path: Path, catalog_form: UnicodeForm, file_form: UnicodeForm
+) -> None:
+    builder.add_image(tmp_path / "photos" / unicodedata.normalize(catalog_form, "Zürich Café.xmp"), City="Osaka")
+    with LightroomCatalog.open(str(builder.folder)) as catalog:
+        result = catalog.find(str(tmp_path / "photos" / unicodedata.normalize(file_form, "Zürich Café.xmp")))
+    assert result.status == "found"
+
+
+@pytest.mark.parametrize(("catalog_form", "file_form"), [(NFC, NFD), (NFD, NFC)])
+def test_find_strict_folder_any_unicode_form(
+    builder: LightroomCatalogBuilder, tmp_path: Path, catalog_form: UnicodeForm, file_form: UnicodeForm
+) -> None:
+    builder.add_image(tmp_path / unicodedata.normalize(catalog_form, "Zürich") / "a.xmp", City="Osaka")
+    with LightroomCatalog.open(str(builder.folder), strict=True) as catalog:
+        assert catalog.find(str(tmp_path / unicodedata.normalize(file_form, "Zürich") / "a.xmp")).status == "found"
+        assert catalog.find(str(tmp_path / "Zurich" / "a.xmp")).status == "not_found"
+
+
+def test_find_both_forms_in_catalog(builder: LightroomCatalogBuilder, tmp_path: Path) -> None:
+    # the same visible name twice in the catalog (in two folders), once NFC, once NFD
+    builder.add_image(tmp_path / "one" / unicodedata.normalize(NFC, "ü.xmp"))
+    builder.add_image(tmp_path / "two" / unicodedata.normalize(NFD, "ü.xmp"))
+    with LightroomCatalog.open(str(builder.folder)) as catalog:
+        assert catalog.find(str(tmp_path / "x" / "ü.xmp")).status == "many_found"
+    with LightroomCatalog.open(str(builder.folder), strict=True) as catalog:
+        result = catalog.find(str(tmp_path / "two" / unicodedata.normalize(NFC, "ü.xmp")))
+    assert result.status == "found"
+    assert result.row is not None
+    assert result.row["pathFromRoot"] == "two/"
 
 
 # MARK: merge_lightroom_data

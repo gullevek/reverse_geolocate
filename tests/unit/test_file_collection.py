@@ -3,6 +3,7 @@ unit tests for reverse_geolocate.utils.file_collection
 (more cases through main() in tests/integration/test_main_file_collection.py)
 """
 
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,29 @@ def test_collect_duplicates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 def test_collect_nothing(tmp_path: Path) -> None:
     assert collect_work_files([str(tmp_path)], []) == []
     assert collect_work_files([], []) == []
+
+
+# MARK: decomposed (NFD) names
+NFC_NAME = unicodedata.normalize("NFC", "Zürich")
+NFD_NAME = unicodedata.normalize("NFD", "Zürich")
+
+
+def test_collect_exclude_unicode_form(tmp_path: Path) -> None:
+    # folder stored decomposed (NFD), excluded with the composed (NFC) name
+    files = touch(tmp_path, f"{NFD_NAME}/a.xmp", "other/b.xmp")
+    assert collect_work_files([str(tmp_path)], [str(tmp_path / NFC_NAME)]) == [files[1]]
+
+
+def test_collect_exclude_file_unicode_form(tmp_path: Path) -> None:
+    files = touch(tmp_path, f"{NFD_NAME}.xmp", "b.xmp")
+    assert collect_work_files([str(tmp_path)], [str(tmp_path / f"{NFC_NAME}.xmp")]) == [files[1]]
+
+
+def test_collect_duplicate_unicode_form(tmp_path: Path) -> None:
+    # the same file given composed and found decomposed in the folder: only once
+    touch(tmp_path, f"{NFD_NAME}/a.xmp")
+    nfc_file = str(tmp_path / NFC_NAME / "a.xmp")
+    assert collect_work_files([nfc_file, str(tmp_path)], []) == [nfc_file]
 
 
 # __END__

@@ -2,12 +2,14 @@
 unit tests for reverse_geolocate.utils.string_helpers
 """
 
+import unicodedata
 from collections.abc import Iterator
 
 import pytest
 
 from reverse_geolocate.utils import string_helpers
 from reverse_geolocate.utils.string_helpers import (
+    char_width,
     format_len,
     is_latin,
     only_latin_chars,
@@ -238,6 +240,73 @@ def test_shorten_path_cjk_by_display_width() -> None:
 def test_shorten_path_never_wider_than_length(length: int) -> None:
     for path in ("/Users/someone/Pictures/2026/file.xmp", "/写真/東京フォルダ/渋谷区/写真.xmp"):
         assert string_len_cjk(shorten_path(path, length=length)) <= length
+
+
+# MARK: decomposed (NFD) characters
+NFC_NAME = unicodedata.normalize("NFC", "Zürich Café")
+NFD_NAME = unicodedata.normalize("NFD", "Zürich Café")
+
+
+@pytest.mark.parametrize(
+    ("char", "expected"),
+    [("a", 1), ("ü", 1), ("東", 2), ("Ａ", 2), ("\u0308", 0), ("\u0301", 0), ("\u3099", 0)],
+)
+def test_char_width(char: str, expected: int) -> None:
+    assert char_width(char) == expected
+
+
+def test_string_len_nfd_same_as_nfc() -> None:
+    assert len(NFD_NAME) == len(NFC_NAME) + 2
+    assert string_len_cjk(NFD_NAME) == string_len_cjk(NFC_NAME) == 11
+
+
+def test_string_len_no_precomposed_form() -> None:
+    # "n" + combining diaeresis has no composed form, NFC does not help
+    assert len(unicodedata.normalize("NFC", "n\u0308")) == 2
+    assert string_len_cjk("n\u0308") == 1
+
+
+def test_string_len_japanese_dakuten_nfd() -> None:
+    # "ガ" decomposed: "カ" + combining voiced sound mark
+    assert string_len_cjk(unicodedata.normalize("NFD", "ガ")) == 2
+
+
+def test_format_len_nfd_aligned() -> None:
+    padded = f"{NFD_NAME:<{format_len(NFD_NAME, 15)}}"
+    assert string_len_cjk(padded) == 15
+
+
+def test_shorten_string_nfd() -> None:
+    # the accent stays with its base character
+    assert shorten_string(NFD_NAME, width=5) == unicodedata.normalize("NFD", "Zür..")
+    assert shorten_string(NFD_NAME, width=11) == NFD_NAME
+
+
+def test_shorten_string_nfd_base_cut_drops_accent() -> None:
+    # "u" does not fit: its accent is not added alone
+    assert shorten_string(unicodedata.normalize("NFD", "Zü"), width=1) == "Z"
+
+
+def test_shorten_path_nfd_fits() -> None:
+    path = f"/photos/{NFD_NAME}.xmp"
+    assert shorten_path(path, length=string_len_cjk(path)) == path
+
+
+def test_shorten_path_nfd_no_lone_accent() -> None:
+    # cut right after the base character: the accent must not start the result alone
+    path = unicodedata.normalize("NFD", "/a/ü.xmp")
+    result = shorten_path(path, length=7)
+    assert result == ".. .xmp"
+    assert not unicodedata.combining(result[3])
+
+
+@pytest.mark.parametrize("length", range(25))
+def test_shorten_path_nfd_never_wider(length: int) -> None:
+    for path in (f"/photos/{NFD_NAME}/{NFD_NAME}.xmp", unicodedata.normalize("NFD", "/写真/ガイド/ポスター.xmp")):
+        result = shorten_path(path, length=length)
+        assert string_len_cjk(result) <= length
+        if result.startswith(".. ") and len(result) > 3:
+            assert not unicodedata.combining(result[3])
 
 
 # __END__

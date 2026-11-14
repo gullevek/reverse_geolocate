@@ -3,8 +3,10 @@ unit tests for reverse_geolocate.utils.function_collection
 (only the parts that need no files and no mocking)
 """
 
+import unicodedata
 from argparse import Namespace
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -136,6 +138,14 @@ def test_normalize_path_symlink(tmp_path: Path) -> None:
     assert normalize_path(tmp_path / "link" / "a.xmp") == normalize_path(target / "a.xmp")
 
 
+def test_normalize_path_unicode_form() -> None:
+    # decomposed (NFD) and composed (NFC) names are the same path
+    nfc = unicodedata.normalize("NFC", "/display_base/Zürich/Café.xmp")
+    nfd = unicodedata.normalize("NFD", nfc)
+    assert nfc != nfd
+    assert normalize_path(nfd) == normalize_path(nfc) == Path(nfc)
+
+
 # MARK: normalize_exclude_paths
 def test_normalize_exclude_paths() -> None:
     assert normalize_exclude_paths(["/a/b/", "/a//c", "/a/./d", "/a/x/../e", "/a/b"]) == {
@@ -214,6 +224,12 @@ def test_is_path_excluded_symlink(tmp_path: Path) -> None:
     assert is_path_excluded(tmp_path / "link" / "a.xmp", excludes) is True
 
 
+@pytest.mark.parametrize(("exclude_form", "path_form"), [("NFC", "NFD"), ("NFD", "NFC")])
+def test_is_path_excluded_unicode_form(exclude_form: Literal["NFC", "NFD"], path_form: Literal["NFC", "NFD"]) -> None:
+    excludes = normalize_exclude_paths([unicodedata.normalize(exclude_form, "/display_base/Zürich")])
+    assert is_path_excluded(unicodedata.normalize(path_form, "/display_base/Zürich/a.xmp"), excludes) is True
+
+
 def test_is_path_excluded_relative(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir("/")
     assert is_path_excluded("photos/excluded/a.xmp", EXCLUDES) is True
@@ -252,6 +268,12 @@ def test_get_display_path_relative_input(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_get_display_path_root_base() -> None:
     assert get_display_path("/display_base/user/a.xmp", Path("/")) == "display_base/user/a.xmp"
+
+
+def test_get_display_path_unicode_form() -> None:
+    base = normalize_path(unicodedata.normalize("NFC", "/display_base/Zürich"))
+    nfd_file = unicodedata.normalize("NFD", "/display_base/Zürich/Café.xmp")
+    assert get_display_path(nfd_file, base) == unicodedata.normalize("NFC", "Café.xmp")
 
 
 def test_get_display_path_symlink(tmp_path: Path) -> None:
