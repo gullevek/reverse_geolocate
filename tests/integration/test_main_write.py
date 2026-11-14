@@ -437,7 +437,7 @@ def test_lookup_without_country_fails(run_main: Run, tmp_path: Path, lookup: Fak
     write_xmp(tmp_path / "src" / "a.xmp")
     before = snapshot(tmp_path / "src")
     result = run_main("-i", tmp_path / "src")
-    assert "(!) Could not geo loaction data" in result.out
+    assert "(!) Could not get geo location data" in result.out
     assert result.statuses() == {"a.xmp": "FAILED"}
     assert snapshot(tmp_path / "src") == before
 

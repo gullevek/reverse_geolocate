@@ -3,8 +3,12 @@ integration tests for main() with a Lightroom catalog (-l / -s)
 the catalog is a minimal SQLite file with only the tables used by the script (see LightroomCatalog)
 """
 
+import os
+import sqlite3
+import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from integration_helpers import TOKYO_LAT, TOKYO_LONG, FakeLookup, LightroomCatalog, RunResult, read_xmp, write_xmp
@@ -110,6 +114,130 @@ def test_lightroom_does_not_replace_xmp_values(run_main: Run, tmp_path: Path, ca
     assert data["GPSLongitude"] == TOKYO_LONG
     assert data["City"] == "Kyoto"
     assert data["State"] == "Osaka"
+
+
+# MARK: catalog file
+def test_catalog_opened_read_only(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # record the connect arguments, the real connect is still used
+    connect_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    real_connect = sqlite3.connect
+
+    def spy_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        connect_calls.append((args, kwargs))
+        return real_connect(*args, **kwargs)
+
+    from reverse_geolocate import reverse_geolocate as reverse_geolocate_module
+
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, City="Osaka")
+    # after the catalog is filled, the test helper uses sqlite3.connect too
+    monkeypatch.setattr(reverse_geolocate_module.sqlite3, "connect", spy_connect)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert len(connect_calls) == 1
+    args, kwargs = connect_calls[0]
+    assert args[0] == f"{catalog.path.resolve().as_uri()}?mode=ro"
+    assert kwargs == {"uri": True}
+
+
+def test_catalog_not_changed(run_main: Run, tmp_path: Path, catalog: LightroomCatalog, snapshot: Snapshot) -> None:
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, City="Osaka")
+    before = snapshot(catalog.folder)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    # same content, no journal or other files added
+    assert snapshot(catalog.folder) == before
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="file permissions are not enforced (Windows or root)",
+)
+def test_catalog_read_only_file(run_main: Run, tmp_path: Path, catalog: LightroomCatalog) -> None:
+    # a catalog without write permission can be used
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, City="Osaka")
+    catalog.path.chmod(0o444)
+    try:
+        result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    finally:
+        catalog.path.chmod(0o644)
+    assert result.exit_code is None
+    assert location(file)["City"] == "Osaka"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="file permissions are not enforced (Windows or root)",
+)
+def test_catalog_not_readable(run_main: Run, tmp_path: Path, catalog: LightroomCatalog) -> None:
+    write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.path.chmod(0o000)
+    try:
+        result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    finally:
+        catalog.path.chmod(0o644)
+    assert result.exit_code == 1
+    assert "(!) Could not open the Lightroom catalog" in result.out
+
+
+def test_catalog_path_special_characters(run_main: Run, tmp_path: Path) -> None:
+    # spaces, "?", "#" and "%" must be escaped in the read only URI
+    catalog = LightroomCatalog(tmp_path / "Light room #1?", name="My Catalog 100%.lrcat")
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, City="Osaka")
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert result.exit_code is None
+    assert location(file)["City"] == "Osaka"
+
+
+@pytest.mark.parametrize("name", ["Catalog.LRCAT", "Catalog.LrCat", "catalog.lrcat"])
+def test_catalog_extension_any_case(run_main: Run, tmp_path: Path, name: str) -> None:
+    catalog = LightroomCatalog(tmp_path / "lightroom", name=name)
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, City="Osaka")
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
+    assert result.exit_code is None
+    assert location(file)["City"] == "Osaka"
+
+
+def test_catalog_first_by_name(run_main: Run, tmp_path: Path) -> None:
+    first = LightroomCatalog(tmp_path / "lightroom", name="a.lrcat")
+    second = LightroomCatalog(tmp_path / "lightroom", name="b.LRCAT")
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    first.add_image(file, City="First")
+    second.add_image(file, City="Second")
+    run_main("-i", tmp_path / "src", "-l", tmp_path / "lightroom")
+    assert location(file)["City"] == "First"
+
+
+def test_catalog_folders_and_other_files_ignored(run_main: Run, tmp_path: Path) -> None:
+    folder = tmp_path / "lightroom"
+    # Lightroom side folders/files, and a folder named like a catalog
+    for name in ("a Catalog Previews.lrdata", "a Catalog.lrcat-data", "a.lrcat"):
+        (folder / name).mkdir(parents=True)
+    (folder / "a.lrcat-wal").write_text("", encoding="UTF-8")
+    (folder / "a.lrcat.lock").write_text("", encoding="UTF-8")
+    catalog = LightroomCatalog(folder, name="z.lrcat")
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, City="Osaka")
+    result = run_main("-i", tmp_path / "src", "-l", folder)
+    assert result.exit_code is None
+    assert location(file)["City"] == "Osaka"
+
+
+def test_no_catalog_in_folder(run_main: Run, tmp_path: Path, lookup: FakeLookup) -> None:
+    (tmp_path / "lightroom").mkdir()
+    (tmp_path / "lightroom" / "notes.txt").write_text("", encoding="UTF-8")
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    before = file.read_bytes()
+    result = run_main("-i", tmp_path / "src", "-l", tmp_path / "lightroom")
+    assert result.exit_code == 1
+    assert "(!) We could not find a lrcat file in the given lightroom folder" in result.out
+    # nothing done
+    assert lookup.calls == []
+    assert file.read_bytes() == before
 
 
 # __END__
