@@ -37,7 +37,13 @@ from reverse_geolocate.utils.location_cache import LocationCache
 from reverse_geolocate.utils.long_lat import long_lat_reg
 from reverse_geolocate.utils.read_only_output import create_read_only_output, matches_read_only_filter
 from reverse_geolocate.utils.statistics import RunStatistics, print_statistics
-from reverse_geolocate.utils.xmp_data import XMP_FIELDS, XmpReadError, read_xmp_file, write_xmp_file
+from reverse_geolocate.utils.xmp_data import (
+    XMP_FIELDS,
+    XmpReadError,
+    XmpWriteError,
+    read_xmp_file,
+    write_xmp_file,
+)
 
 MapType = Literal["google", "openstreetmap"]
 
@@ -337,6 +343,9 @@ def run_write(
         lightroom (LightroomCatalog | None): open Lightroom catalog or None
         statistics (RunStatistics): counters
         call_path (Path): normalized folder the script is called from, for the output paths
+
+    Raises:
+        XmpWriteError: an XMP file could not be written (critical, the run must stop)
     """
     write_run = WriteRun(args, map_type, lightroom, statistics)
     for xmp_file in work_files:
@@ -380,6 +389,8 @@ def main():
         if args.debug:
             print(f"### USE Lightroom {lightroom.database}")
 
+    # set if the run was stopped because a file could not be written
+    write_error = False
     try:
         # MARK: check Exempi
         # each file is read into its own XMP object, check here once that Exempi can be loaded
@@ -405,14 +416,24 @@ def main():
         if args.read_only:
             run_read_only(work_files, args, statistics, call_path)
         else:
-            run_write(work_files, args, map_type, lightroom, statistics, call_path)
+            try:
+                run_write(work_files, args, map_type, lightroom, statistics, call_path)
+            except XmpWriteError as e:
+                # no write permission, disk full, ...: critical, do not continue with the other files
+                # (the file itself is unchanged)
+                print(f"(!!!) CRITICAL: Could not write the XMP file {e.xmp_file}: {e.reason}")
+                print("(!!!) Run stopped, the remaining files are not processed")
+                write_error = True
     finally:
         # MARK: close Lightroom
         if lightroom is not None:
             lightroom.close()
 
     # MARK: print stats
+    # also after a critical error, shows what was done until then
     print_statistics(statistics, read_only=bool(args.read_only), use_lightroom=lightroom is not None)
+    if write_error:
+        sys.exit(1)
 
 
 ##############################################################

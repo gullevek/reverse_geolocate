@@ -3,7 +3,10 @@ XMP sidecar file data: read the GPS and location fields into a data set, write t
 NOTE: needs the Exempi library (python-xmp-toolkit)
 """
 
+import contextlib
 import os
+import shutil
+import tempfile
 from argparse import Namespace
 from shutil import copyfile
 
@@ -67,23 +70,63 @@ def read_xmp_file(xmp_file: str, debug: bool = False) -> tuple[XMPMeta, dict[str
     return xmp, data_set
 
 
+class XmpWriteError(Exception):
+    """an XMP file (or its backup) could not be written: no write permission, disk full, ..."""
+
+    def __init__(self, xmp_file: str, reason: str) -> None:
+        super().__init__(f"{xmp_file}: {reason}")
+        self.xmp_file = xmp_file
+        self.reason = reason
+
+
 def write_xmp_file(xmp: XMPMeta, xmp_file: str, backup: bool, args: Namespace) -> None:
     """
     writes the XMP object back to the file, optional with a backup copy before
 
+    the file is written safely: first to a temporary file in the same folder, then it replaces the file,
+    so the XMP file is never left half written (eg disk full)
+    on any error the XMP file is unchanged and no new backup or temporary file is left
+
     Args:
         xmp (XMPMeta): XMP object with the changed data
-        xmp_file (str): XMP file path
+        xmp_file (str): XMP file path (a symlink: the file it points to is written)
         backup (bool): create a backup copy <name>.BK.<n>.<ext> before writing
         args (Namespace): command line arguments (for the debug flag)
+
+    Raises:
+        XmpWriteError: the file or the backup could not be written
     """
-    if backup:
-        # next free backup number, highest existing + 1
-        bk_file_counter = get_backup_file_counter(xmp_file, args)
-        name, extension = os.path.splitext(xmp_file)
-        copyfile(xmp_file, f"{name}.BK.{bk_file_counter}{extension}")
-    with open(xmp_file, "w", encoding="UTF-8") as fptr:
-        fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
+    # write the file a symlink points to, the symlink stays
+    target_file = os.path.realpath(xmp_file)
+    # a write protected file must not be replaced (replacing only needs folder write permission)
+    if not os.access(target_file, os.W_OK):
+        raise XmpWriteError(xmp_file, "no write permission")
+    content = xmp.serialize_to_str(omit_packet_wrapper=True)
+    backup_file = ""
+    temp_file = ""
+    try:
+        if backup:
+            # next free backup number, highest existing + 1
+            bk_file_counter = get_backup_file_counter(xmp_file, args)
+            name, extension = os.path.splitext(xmp_file)
+            backup_file = f"{name}.BK.{bk_file_counter}{extension}"
+            copyfile(xmp_file, backup_file)
+        # temporary file in the same folder (same file system), hidden name
+        folder, file_name = os.path.split(target_file)
+        fd, temp_file = tempfile.mkstemp(dir=folder, prefix=f".{file_name}.", suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="UTF-8") as fptr:
+            fptr.write(content)
+        # keep the file permissions of the original file
+        shutil.copymode(target_file, temp_file)
+        os.replace(temp_file, target_file)
+    except OSError as e:
+        # the XMP file is unchanged: remove the temporary file and the new (maybe partial) backup
+        # (a failing clean up must not hide the write error)
+        for file in (temp_file, backup_file):
+            if file:
+                with contextlib.suppress(OSError):
+                    os.remove(file)
+        raise XmpWriteError(xmp_file, e.strerror or str(e)) from e
 
 
 # __END__
