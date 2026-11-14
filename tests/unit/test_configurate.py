@@ -44,8 +44,15 @@ def make_args(
     email: str | None = None,
     config_write: bool = False,
     debug: bool = False,
+    use_openstreetmap: bool = False,
 ) -> Namespace:
-    return Namespace(google_api_key=google_api_key, email=email, config_write=config_write, debug=debug)
+    return Namespace(
+        google_api_key=google_api_key,
+        email=email,
+        config_write=config_write,
+        debug=debug,
+        use_openstreetmap=use_openstreetmap,
+    )
 
 
 # MARK: read
@@ -70,16 +77,40 @@ def test_read_google_api_key(home: Path) -> None:
 
 def test_read_email(home: Path) -> None:
     write_config(home, "[API]\nopenstreetmapemail = me@example.com\n")
-    args = read_config(make_args())
+    args = read_config(make_args(use_openstreetmap=True))
     assert args.email == "me@example.com"
     assert args.google_api_key is None
 
 
-def test_read_both(home: Path) -> None:
+def test_read_only_google_key_for_google(home: Path) -> None:
+    # only the setting for the used service is read
     write_config(home, "[API]\ngoogleapikey = KEY123\nopenstreetmapemail = me@example.com\n")
     args = read_config(make_args())
     assert args.google_api_key == "KEY123"
+    assert args.email is None
+
+
+def test_read_only_email_for_openstreetmap(home: Path) -> None:
+    write_config(home, "[API]\ngoogleapikey = KEY123\nopenstreetmapemail = me@example.com\n")
+    args = read_config(make_args(use_openstreetmap=True))
+    assert args.google_api_key is None
     assert args.email == "me@example.com"
+
+
+@pytest.mark.parametrize("email", ["foo", "me@example", "@example.com", "me@example.c0m"])
+def test_read_invalid_email_not_used(home: Path, capsys: pytest.CaptureFixture[str], email: str) -> None:
+    file = write_config(home, f"[API]\nopenstreetmapemail = {email}\n")
+    args = read_config(make_args(use_openstreetmap=True))
+    assert args.email is None
+    assert capsys.readouterr().out == f"(!) Not a valid email for OpenStreetMap in the config file {file}: {email}\n"
+
+
+def test_read_invalid_email_ignored_for_google(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # not read for Google: no warning
+    write_config(home, "[API]\nopenstreetmapemail = foo\n")
+    args = read_config(make_args())
+    assert args.email is None
+    assert capsys.readouterr().out == ""
 
 
 def test_key_names_are_case_insensitive(home: Path) -> None:
@@ -89,9 +120,8 @@ def test_key_names_are_case_insensitive(home: Path) -> None:
 
 def test_arguments_win_over_config(home: Path) -> None:
     write_config(home, "[API]\ngoogleapikey = CONFIG_KEY\nopenstreetmapemail = config@example.com\n")
-    args = read_config(make_args(google_api_key="ARG_KEY", email="arg@example.com"))
-    assert args.google_api_key == "ARG_KEY"
-    assert args.email == "arg@example.com"
+    assert read_config(make_args(google_api_key="ARG_KEY")).google_api_key == "ARG_KEY"
+    assert read_config(make_args(email="arg@example.com", use_openstreetmap=True)).email == "arg@example.com"
 
 
 def test_config_without_api_section(home: Path) -> None:
@@ -142,8 +172,8 @@ def test_write_adds_to_existing_config(home: Path) -> None:
     assert config["API"]["openstreetmapemail"] == "me@example.com"
     # other sections are kept
     assert config["OTHER"]["keep"] == "yes"
-    # the email was read from the config
-    assert args.email == "me@example.com"
+    # the email is kept in the config, but not read for Google
+    assert args.email is None
 
 
 def test_write_adds_api_section(home: Path) -> None:

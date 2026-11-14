@@ -95,15 +95,46 @@ def test_write_settings_in_read_only_mode(run_main: Run, tmp_path: Path, config_
     assert read_config(config_file) == {"googleapikey": "KEY"}
 
 
-def test_config_email_with_google(run_main: Run, tmp_path: Path, config_file: Path, lookup: FakeLookup) -> None:
-    # NOTE: an email from the config is also set without -o (the argument check is done before),
-    # Google is used and the email is not used for the lookup
-    write_config(config_file, openstreetmapemail="config@example.com")
+def test_config_email_not_read_for_google(run_main: Run, tmp_path: Path, config_file: Path, lookup: FakeLookup) -> None:
+    # only the setting for the used service is read
+    write_config(config_file, googleapikey="CONFIG_KEY", openstreetmapemail="config@example.com")
     write_xmp(tmp_path / "src" / "a.xmp")
     result = run_main("-i", tmp_path / "src")
     assert result.exit_code is None
     assert lookup.calls[0]["map_type"] == "google"
+    assert lookup.call_args[0].google_api_key == "CONFIG_KEY"
+    assert lookup.call_args[0].email is None
+
+
+def test_config_key_not_read_for_openstreetmap(
+    run_main: Run, tmp_path: Path, config_file: Path, lookup: FakeLookup
+) -> None:
+    write_config(config_file, googleapikey="CONFIG_KEY", openstreetmapemail="config@example.com")
+    write_xmp(tmp_path / "src" / "a.xmp")
+    run_main("-i", tmp_path / "src", "-o")
+    assert lookup.call_args[0].google_api_key is None
     assert lookup.call_args[0].email == "config@example.com"
+
+
+def test_config_invalid_email_not_used(run_main: Run, tmp_path: Path, config_file: Path, lookup: FakeLookup) -> None:
+    # warning, the run continues without an email
+    write_config(config_file, openstreetmapemail="foo")
+    write_xmp(tmp_path / "src" / "a.xmp")
+    result = run_main("-i", tmp_path / "src", "-o")
+    assert result.exit_code is None
+    assert f"(!) Not a valid email for OpenStreetMap in the config file {config_file}: foo" in result.lines
+    assert lookup.call_args[0].email is None
+    assert result.statuses() == {"a.xmp": "UPDATED"}
+
+
+def test_write_settings_keeps_other_service(run_main: Run, tmp_path: Path, config_file: Path) -> None:
+    # -w with a new Google key keeps the stored email (and the other way around)
+    write_config(config_file, openstreetmapemail="config@example.com")
+    write_xmp(tmp_path / "src" / "a.xmp")
+    run_main("-i", tmp_path / "src", "-w", "-g", "NEW_KEY", "--test")
+    assert read_config(config_file) == {"openstreetmapemail": "config@example.com", "googleapikey": "NEW_KEY"}
+    run_main("-i", tmp_path / "src", "-w", "-o", "-e", "new@example.com", "--test")
+    assert read_config(config_file) == {"openstreetmapemail": "new@example.com", "googleapikey": "NEW_KEY"}
 
 
 def test_config_debug_output(run_main: Run, tmp_path: Path, config_file: Path) -> None:

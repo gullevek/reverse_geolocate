@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from reverse_geolocate.setup.arguments import ArgumentSetup
+from reverse_geolocate.setup.arguments import ArgumentSetup, is_valid_email
 
 ALL_ATTRIBUTES = (
     "xmp_sources",
@@ -301,6 +301,24 @@ def test_email_invalid(source: str, email: str, capsys: pytest.CaptureFixture[st
         get_args("-i", source, "-o", "-e", email)
     assert exc_info.value.code == ARGUMENT_ERROR
     assert f"Not a valid email for OpenStreetMap: {email}" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("email", "expected"),
+    [
+        ("me@example.com", True),
+        ("first.last@sub.example.org", True),
+        ("a@b.c", True),
+        ("foo", False),
+        ("me@example", False),
+        ("@example.com", False),
+        ("me@.com", False),
+        ("me@example.c0m", False),
+        ("", False),
+    ],
+)
+def test_is_valid_email(email: str, expected: bool) -> None:
+    assert is_valid_email(email) is expected
 
 
 # MARK: debug output

@@ -10,6 +10,19 @@ from reverse_geolocate.setup.argparse.readable_dir import ReadableDir
 from reverse_geolocate.setup.argparse.writeable_dir_folder import WritableDirFolder
 
 
+def is_valid_email(email: str) -> bool:
+    """
+    basic email check for OpenStreetMap: something @ something . letters
+
+    Args:
+        email (str): email address
+
+    Returns:
+        bool: True if the email looks valid
+    """
+    return re.match(r"^.+@.+\.[A-Za-z]{1,}$", email) is not None
+
+
 class ArgumentSetup:
     """
     ArgumentParser setup and parsning
@@ -316,7 +329,7 @@ class ArgumentSetup:
             print("You cannot set an OpenStreetMap email and not use OpenStreetMap")
             error = True
         # if email and not basic valid email (@ .)
-        if self.args.email and not re.match(r"^.+@.+\.[A-Za-z]{1,}$", self.args.email):
+        if self.args.email and not is_valid_email(self.args.email):
             print(f"Not a valid email for OpenStreetMap: {self.args.email}")
             error = True
         # on error exit here

@@ -6,15 +6,23 @@ import configparser
 import os
 from argparse import Namespace
 
+from reverse_geolocate.setup.arguments import is_valid_email
+
 
 def read_config(args: Namespace) -> Namespace:
-    """_summary_
+    """
+    reads the API settings from the config file ~/.config/reverseGeolocate/reverse_geolocate.cfg
+    and writes them there with -w (config_write)
+
+    only the setting for the used service is read, values from the command line have priority:
+    - Google (default): googleapikey
+    - OpenStreetMap (-o): openstreetmapemail, checked like -e, an invalid email is not used (warning)
 
     Args:
-        args (Namespace): _description_
+        args (Namespace): command line arguments, the API settings are set in there
 
     Returns:
-        Namespace: _description_
+        Namespace: the command line arguments with the API settings from the config file
     """
     config = configparser.ConfigParser()
     # try to find config file in following order
@@ -27,11 +35,17 @@ def read_config(args: Namespace) -> Namespace:
     if os.path.isfile(config_data):
         config.read(config_data)
         # check if api group & setting is there. also never overwrite argument given data
+        # only the setting for the used service (the argument checks are done before for the command line)
         if "API" in config:
-            if "googleapikey" in config["API"] and not args.google_api_key:
-                args.google_api_key = config["API"]["googleapikey"]
-            if "openstreetmapemail" in config["API"] and not args.email:
-                args.email = config["API"]["openstreetmapemail"]
+            if not args.use_openstreetmap:
+                if "googleapikey" in config["API"] and not args.google_api_key:
+                    args.google_api_key = config["API"]["googleapikey"]
+            elif "openstreetmapemail" in config["API"] and not args.email:
+                config_email = config["API"]["openstreetmapemail"]
+                if is_valid_email(config_email):
+                    args.email = config_email
+                else:
+                    print(f"(!) Not a valid email for OpenStreetMap in the config file {config_data}: {config_email}")
     # write data if exists and changed
     if args.config_write and (args.google_api_key or args.email):
         config_change = False
