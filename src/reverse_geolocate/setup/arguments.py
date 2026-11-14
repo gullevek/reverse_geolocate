@@ -48,7 +48,7 @@ class ArgumentSetup:
             "-i",
             "--include-source",
             required=True,
-            nargs="*",
+            nargs="+",
             action=WritableDirFolder,
             dest="xmp_sources",
             metavar="XMP SOURCE FOLDER",
@@ -61,7 +61,7 @@ class ArgumentSetup:
         self.parser.add_argument(
             "-x",
             "--exclude-source",
-            nargs="*",
+            nargs="+",
             action=WritableDirFolder,
             dest="exclude_sources",
             metavar="EXCLUDE XMP SOURCE FOLDER",

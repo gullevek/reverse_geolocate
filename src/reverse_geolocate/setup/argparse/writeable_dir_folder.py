@@ -11,7 +11,7 @@ from typing import Any, override
 class WritableDirFolder(argparse.Action):
     """
     checks if this is a writeable folder OR file
-    AND it works on nargs *
+    AND it works on nargs + (or *, an empty list is rejected)
     stores a list[str] of the valid paths in the namespace
     """
 
@@ -23,10 +23,12 @@ class WritableDirFolder(argparse.Action):
         values: str | Sequence[Any] | None,
         option_string: str | None = None,
     ) -> None:
-        if isinstance(values, str) or values is None:
+        # an empty list (flag without values on nargs *) is not valid either,
+        # otherwise nothing is stored and the dest stays at the default (None)
+        if isinstance(values, str) or values is None or len(values) == 0:
             raise argparse.ArgumentError(self, f"{values} is not a list of writable dirs or files")
         else:
-            # we loop through list (this is because of nargs *)
+            # we loop through list (this is because of nargs +)
             for prospective_dir in values:
                 # if valid and writeable (dir or file)
                 if os.access(prospective_dir, os.W_OK):
