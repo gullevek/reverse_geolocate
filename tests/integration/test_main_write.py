@@ -309,6 +309,16 @@ def test_selected_field_already_set_skipped(run_main: Run, tmp_path: Path, looku
     assert result.stat("Skipped") == 1
 
 
+@pytest.mark.parametrize("argv", [["-f", "city"], ["-f", "overwrite"], ["-f", "city", "-f", "overwrite"]])
+def test_field_controls_gps_unchanged_without_lightroom(run_main: Run, tmp_path: Path, argv: list[str]) -> None:
+    # without Lightroom GPS never changes, also not with field controls or overwrite
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    run_main("-i", tmp_path / "src", *argv)
+    data = read_xmp(file)
+    assert data["GPSLatitude"] == TOKYO_LAT
+    assert data["GPSLongitude"] == TOKYO_LONG
+
+
 def test_overwrite_selected_field(run_main: Run, tmp_path: Path) -> None:
     file = write_xmp(tmp_path / "src" / "a.xmp", City="Osaka", State="Osaka")
     run_main("-i", tmp_path / "src", "-f", "city", "-f", "overwrite")

@@ -382,14 +382,76 @@ def test_selected_field_limits_lightroom(
     assert lookup.calls == []
 
 
-def test_selected_field_gps_not_written(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
-    # NOTE: with selected fields, GPS from Lightroom is not written (GPS is not a selectable field)
+@pytest.mark.parametrize("argv", [["-f", "city"], ["-f", "country"], ["-f", "city", "-f", "overwrite"], []])
+def test_lightroom_gps_written_with_any_field_controls(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, argv: list[str]
+) -> None:
+    # GPS is not selectable with -f: missing GPS from Lightroom is always written,
+    # the location data is not written without the coordinates it is based on
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, *argv)
+    data = read_xmp(file)
+    assert data["GPSLatitude"] == "35,30.0N"
+    assert data["GPSLongitude"] == "139,30.0E"
+
+
+def test_selected_field_gps_and_city_written(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
     file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
     catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
     run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "city")
+    # GPS and the selected field, not the other location fields
+    assert read_xmp(file) == {
+        "GPSLatitude": "35,30.0N",
+        "GPSLongitude": "139,30.0E",
+        "Location": "",
+        "City": "Osaka",
+        "State": "",
+        "Country": "",
+        "CountryCode": "",
+    }
+
+
+def test_selected_field_lookup_with_lightroom_gps(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # only GPS in Lightroom: lookup with the Lightroom GPS, the GPS and the selected field are written
+    file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "city")
+    assert lookup.calls == [{"longitude": "139,30.0E", "latitude": "35,30.0N", "map_type": "google"}]
     data = read_xmp(file)
-    assert data["City"] == "Osaka"
-    assert data["GPSLatitude"] == ""
+    assert data["GPSLatitude"] == "35,30.0N"
+    assert data["City"] == "Shibuya"
+    assert data["State"] == ""
+
+
+def test_selected_field_already_set_only_gps_written(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
+) -> None:
+    # the selected field is set: no lookup, only the missing GPS is filled
+    file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto", **NO_GPS)
+    catalog.add_image(file, gps_latitude=35.5, gps_longitude=139.5, **LIGHTROOM_FIELDS)
+    result = run_main("-i", tmp_path / "src", "-l", catalog.folder, "-f", "city")
+    assert lookup.calls == []
+    data = read_xmp(file)
+    assert data["GPSLatitude"] == "35,30.0N"
+    assert data["City"] == "Kyoto"
+    assert data["State"] == ""
+    assert result.statuses() == {"a.xmp": "UPDATED"}
+    assert result.stat("GeoLocation from Lightroom") == 1
+
+
+@pytest.mark.parametrize("argv", [[], ["-f", "overwrite"], ["-f", "city", "-f", "overwrite"]])
+def test_existing_gps_never_replaced_by_lightroom(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, argv: list[str]
+) -> None:
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    catalog.add_image(file, gps_latitude=1.0, gps_longitude=2.0, **LIGHTROOM_FIELDS)
+    run_main("-i", tmp_path / "src", "-l", catalog.folder, *argv)
+    data = read_xmp(file)
+    assert data["GPSLatitude"] == TOKYO_LAT
+    assert data["GPSLongitude"] == TOKYO_LONG
 
 
 def test_overwrite_lookup_wins_over_xmp_lightroom_not_used(
