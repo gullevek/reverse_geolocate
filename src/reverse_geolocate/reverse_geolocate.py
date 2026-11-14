@@ -488,6 +488,10 @@ def main():
             has_unset = False
             failed = False
             from_cache = False
+            # set if the map lookup was needed but could not give data
+            lookup_failed = False
+            # location keys filled from the map lookup (for the statistics)
+            map_keys: set[str] = set()
             for loc in data_set_loc:
                 if check_overwrite(data_set[loc], loc, args.field_controls, args):
                     has_unset = True
@@ -500,7 +504,7 @@ def main():
                 gps_valid = False
             if has_unset and not gps_valid:
                 print("(!) No valid GPS data for geo location lookup ", end="")
-                failed = True
+                lookup_failed = True
             elif has_unset:
                 # check if lat/long is in cache
                 cache_key = f"{data_set['GPSLongitude']}#{data_set['GPSLatitude']}"
@@ -574,7 +578,10 @@ def main():
                 # must have at least the country set to write anything back
                 if maps_location["Country"]:
                     for loc in data_set_loc:
-                        # only write to XMP if overwrite check passes and the value changes
+                        # Lightroom data has priority, only fill what Lightroom did not set
+                        if data_set[loc] != data_set_original[loc]:
+                            continue
+                        # only use if the overwrite check passes and the value changes
                         # (overwrite with the same value must not write the file or create a backup)
                         # an empty value from the lookup never replaces (clears) an existing value
                         if (
@@ -583,37 +590,31 @@ def main():
                             and maps_location[loc] != data_set_original[loc]
                         ):
                             data_set[loc] = maps_location[loc]
-                            xmp.set_property(xmp_fields[loc], loc, maps_location[loc])
-                            write_file = True
-                    # only count new map lookups, cache hits are counted separately
-                    if write_file and not from_cache:
-                        count["map"] += 1
+                            map_keys.add(loc)
                 else:
                     print("(!) Could not geo loaction data ", end="")
-                    failed = True
-            else:
-                if args.debug:
-                    print(f"Lightroom data use: {use_lightroom}, Lightroom data ok: {lightroom_data_ok}")
-                # check if the data_set differs from the original (LR db load)
-                # if yes write, else skip
-                if use_lightroom and lightroom_data_ok:
-                    # for key in data_set:
-                    #     # if not the same (to original data) and passes overwrite check
-                    #     if (
-                    #           data_set[key] != data_set_original[key] and
-                    #           check_overwrite(data_set_original[key], key, args.field_controls)
-                    #       ):
-                    #         xmp.set_property(xmp_fields[key], key, data_set[key])
-                    #         write_file = True
-                    for key, value in data_set.items():
-                        # if not the same (to original data) and passes overwrite check
-                        if value != data_set_original[key] and check_overwrite(
-                            data_set_original[key], key, args.field_controls, args
-                        ):
-                            xmp.set_property(xmp_fields[key], key, value)
-                            write_file = True
-                    if write_file:
-                        count["lightroom"] += 1
+                    lookup_failed = True
+            elif args.debug:
+                print(f"Lightroom data use: {use_lightroom}, Lightroom data ok: {lightroom_data_ok}")
+            # MARK: write data set to XMP
+            # all changed values: from Lightroom (also GPS) and from the map lookup
+            lightroom_keys: set[str] = set()
+            for key, value in data_set.items():
+                # if not the same (to original data) and passes overwrite check
+                if value != data_set_original[key] and check_overwrite(
+                    data_set_original[key], key, args.field_controls, args
+                ):
+                    xmp.set_property(xmp_fields[key], key, value)
+                    write_file = True
+                    if key not in map_keys:
+                        lightroom_keys.add(key)
+            # only count new map lookups, cache hits are counted separately
+            if map_keys and write_file and not from_cache:
+                count["map"] += 1
+            if lightroom_keys:
+                count["lightroom"] += 1
+            # failed only if the lookup failed and there is nothing else (Lightroom) to write
+            failed = lookup_failed and not write_file
             # if we have the write flag set, write data
             if write_file:
                 if not args.test:
@@ -666,7 +667,7 @@ def main():
         print(f"GeoLocation from Fuzzy Cache     : {count['fuzzy_cache']:9,}")
         print(f"Failed reverse GeoLocate         : {count['failed']:9,}")
         if use_lightroom:
-            print(f"GeoLocaction from Lightroom      : {count['lightroom']:9,}")
+            print(f"GeoLocation from Lightroom       : {count['lightroom']:9,}")
             print(f"No Lightroom data found          : {count['not_found']:9,}")
             print(f"More than one found in Lightroom : {count['many_found']:9,}")
         # if we have failed data
