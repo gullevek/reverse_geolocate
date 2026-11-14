@@ -258,7 +258,7 @@ def reverse_geolocate_google(longitude: float, latitude: float, args: argparse.N
                                             geolocation[loc_index] = addr["longText"]
                                         elif not temp_geolocation[loc_index]:
                                             temp_geolocation[loc_index] = addr["longText"]
-        # check that all in geoloaction are filled and if not fille from temp_geolocation dictionary
+        # check that all in geolocation are filled and if not fill from temp_geolocation dictionary
         for loc_index in type_map:
             if not geolocation[loc_index] and temp_geolocation[loc_index]:
                 geolocation[loc_index] = temp_geolocation[loc_index]

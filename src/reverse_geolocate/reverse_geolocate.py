@@ -176,16 +176,24 @@ def main():
             query += " AND AgLibraryRootFolder.absolutePath || AgLibraryFolder.pathFromRoot = ?"
 
         # connect to LR database for reading
-        # open the folder and look for the first lrcat file in there
+        # open the folder and look for the first lrcat file in there (sorted, extension in any case)
         # typed, args values are Any and os.listdir(Any) gives an unknown type
         # (ReadableDir action always stores a str)
         lightroom_folder = str(args.lightroom_folder)
         for file in sorted(os.listdir(lightroom_folder)):
-            if file.endswith(".lrcat"):
-                lightroom_database = os.path.join(lightroom_folder, file)
-                lrdb = sqlite3.connect(lightroom_database)
+            file_path = os.path.join(lightroom_folder, file)
+            if file.lower().endswith(".lrcat") and os.path.isfile(file_path):
+                lightroom_database = file_path
                 # only use the first one, do not open (and leak) further connections
                 break
+        if lightroom_database:
+            try:
+                # always open read only, the catalog must never be changed
+                # (URI, so special characters in the path are escaped)
+                lrdb = sqlite3.connect(f"{Path(lightroom_database).resolve().as_uri()}?mode=ro", uri=True)
+            except sqlite3.Error as e:
+                print(f"(!) Could not open the Lightroom catalog {lightroom_database}: {e}")
+                lrdb = None
         if not lightroom_database or not lrdb:
             print(
                 "(!) We could not find a lrcat file in the given lightroom folder or "
@@ -448,7 +456,7 @@ def main():
                 lrdb_row = cast(sqlite3.Row | None, cur.fetchone())
                 # abort the read because we found more than one row
                 if cur.fetchone() is not None:
-                    print("(!) Lightroom DB returned more than one more row")
+                    print("(!) Lightroom DB returned more than one row")
                     lightroom_data_ok = False
                     count["many_found"] += 1
                 # Notify if we couldn't find one
@@ -592,7 +600,7 @@ def main():
                             data_set[loc] = maps_location[loc]
                             map_keys.add(loc)
                 else:
-                    print("(!) Could not geo loaction data ", end="")
+                    print("(!) Could not get geo location data ", end="")
                     lookup_failed = True
             elif args.debug:
                 print(f"Lightroom data use: {use_lightroom}, Lightroom data ok: {lightroom_data_ok}")
