@@ -24,6 +24,8 @@ class ArgumentSetup:
             epilog="Sample: (todo)",
         )
         self.args: argparse.Namespace | None = None
+        # register the options once, so get_args() can be called more than once
+        self.__arguments_set()
 
     # def __get_alias_list(self, action_name: str) -> list[str]:
     #     """
@@ -321,19 +323,20 @@ class ArgumentSetup:
         if error:
             raise SystemExit("Argument error, see above")
 
-    def get_args(self) -> argparse.Namespace:
+    def get_args(self, argv: list[str] | None = None) -> argparse.Namespace:
         """
-        return the argument parser
+        parses and checks the arguments, can be called more than once
+
+        Args:
+            argv (list[str] | None, optional): arguments to parse, None reads sys.argv. Defaults to None.
 
         Returns:
-            Namespace: _description_
+            Namespace: parsed and checked arguments
         """
 
-        # set arguments
-        self.__arguments_set()
         # parse the arguments
         try:
-            self.args = self.parser.parse_args()
+            self.args = self.parser.parse_args(argv)
         except argparse.ArgumentTypeError as e:
             raise SystemExit(f"Argument error: {e}") from e
         # post fix
