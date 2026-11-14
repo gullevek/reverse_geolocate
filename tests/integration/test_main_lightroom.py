@@ -1,6 +1,6 @@
 """
 integration tests for main() with a Lightroom catalog (-l / -s)
-the catalog is a minimal SQLite file with only the tables used by the script (see LightroomCatalog)
+the catalog is a minimal SQLite file with only the tables used by the script (see LightroomCatalogBuilder)
 """
 
 import os
@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from integration_helpers import TOKYO_LAT, TOKYO_LONG, FakeLookup, LightroomCatalog, RunResult, read_xmp, write_xmp
+from helpers.lightroom_catalog_builder import LightroomCatalogBuilder
+from integration_helpers import TOKYO_LAT, TOKYO_LONG, FakeLookup, RunResult, read_xmp, write_xmp
 
 Run = Callable[..., RunResult]
 Snapshot = Callable[[Path], dict[Path, bytes]]
@@ -22,8 +23,8 @@ NO_GPS = {"GPSLatitude": "", "GPSLongitude": ""}
 
 
 @pytest.fixture
-def catalog(tmp_path: Path) -> LightroomCatalog:
-    return LightroomCatalog(tmp_path / "lightroom")
+def catalog(tmp_path: Path) -> LightroomCatalogBuilder:
+    return LightroomCatalogBuilder(tmp_path / "lightroom")
 
 
 def location(path: Path) -> dict[str, str]:
@@ -33,7 +34,7 @@ def location(path: Path) -> dict[str, str]:
 
 # MARK: Lightroom data combined with the map lookup
 def test_lightroom_partial_data_kept_with_lookup(
-    run_main: Run, tmp_path: Path, catalog: LightroomCatalog, lookup: FakeLookup
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
 ) -> None:
     # Lightroom has City and Country, the rest comes from the lookup
     file = write_xmp(tmp_path / "src" / "a.xmp")
@@ -46,7 +47,7 @@ def test_lightroom_partial_data_kept_with_lookup(
 
 
 def test_lightroom_gps_written_with_lookup(
-    run_main: Run, tmp_path: Path, catalog: LightroomCatalog, lookup: FakeLookup
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
 ) -> None:
     # no GPS in the XMP, GPS from Lightroom, no location data: lookup with the Lightroom GPS
     file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
@@ -58,7 +59,7 @@ def test_lightroom_gps_written_with_lookup(
 
 
 def test_lightroom_data_written_if_lookup_fails(
-    run_main: Run, tmp_path: Path, catalog: LightroomCatalog, lookup: FakeLookup
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
 ) -> None:
     lookup.result = {**lookup.result, "Country": ""}
     file = write_xmp(tmp_path / "src" / "a.xmp")
@@ -71,7 +72,7 @@ def test_lightroom_data_written_if_lookup_fails(
 
 
 def test_lightroom_data_written_without_gps(
-    run_main: Run, tmp_path: Path, catalog: LightroomCatalog, lookup: FakeLookup
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
 ) -> None:
     # no GPS anywhere: no lookup possible, the Lightroom data is still written
     file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
@@ -82,7 +83,7 @@ def test_lightroom_data_written_without_gps(
     assert result.statuses() == {"a.xmp": "UPDATED"}
 
 
-def test_lightroom_and_lookup_counted(run_main: Run, tmp_path: Path, catalog: LightroomCatalog) -> None:
+def test_lightroom_and_lookup_counted(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
     file = write_xmp(tmp_path / "src" / "a.xmp")
     catalog.add_image(file, City="Osaka")
     result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
@@ -92,7 +93,7 @@ def test_lightroom_and_lookup_counted(run_main: Run, tmp_path: Path, catalog: Li
 
 
 def test_lightroom_complete_no_lookup(
-    run_main: Run, tmp_path: Path, catalog: LightroomCatalog, lookup: FakeLookup
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, lookup: FakeLookup
 ) -> None:
     # all data from Lightroom: no lookup
     file = write_xmp(tmp_path / "src" / "a.xmp", **NO_GPS)
@@ -104,7 +105,7 @@ def test_lightroom_complete_no_lookup(
     assert result.stat("New GeoLocation from Map") == 0
 
 
-def test_lightroom_does_not_replace_xmp_values(run_main: Run, tmp_path: Path, catalog: LightroomCatalog) -> None:
+def test_lightroom_does_not_replace_xmp_values(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
     file = write_xmp(tmp_path / "src" / "a.xmp", City="Kyoto")
     catalog.add_image(file, gps_latitude=1.0, gps_longitude=1.0, City="Osaka", State="Osaka")
     run_main("-i", tmp_path / "src", "-l", catalog.folder)
@@ -118,7 +119,7 @@ def test_lightroom_does_not_replace_xmp_values(run_main: Run, tmp_path: Path, ca
 
 # MARK: catalog file
 def test_catalog_opened_read_only(
-    run_main: Run, tmp_path: Path, catalog: LightroomCatalog, monkeypatch: pytest.MonkeyPatch
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # record the connect arguments, the real connect is still used
     connect_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
@@ -128,12 +129,12 @@ def test_catalog_opened_read_only(
         connect_calls.append((args, kwargs))
         return real_connect(*args, **kwargs)
 
-    from reverse_geolocate import reverse_geolocate as reverse_geolocate_module
+    from reverse_geolocate.utils import lightroom as lightroom_module
 
     file = write_xmp(tmp_path / "src" / "a.xmp")
     catalog.add_image(file, City="Osaka")
     # after the catalog is filled, the test helper uses sqlite3.connect too
-    monkeypatch.setattr(reverse_geolocate_module.sqlite3, "connect", spy_connect)
+    monkeypatch.setattr(lightroom_module.sqlite3, "connect", spy_connect)
     run_main("-i", tmp_path / "src", "-l", catalog.folder)
     assert len(connect_calls) == 1
     args, kwargs = connect_calls[0]
@@ -141,7 +142,9 @@ def test_catalog_opened_read_only(
     assert kwargs == {"uri": True}
 
 
-def test_catalog_not_changed(run_main: Run, tmp_path: Path, catalog: LightroomCatalog, snapshot: Snapshot) -> None:
+def test_catalog_not_changed(
+    run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder, snapshot: Snapshot
+) -> None:
     file = write_xmp(tmp_path / "src" / "a.xmp")
     catalog.add_image(file, City="Osaka")
     before = snapshot(catalog.folder)
@@ -154,7 +157,7 @@ def test_catalog_not_changed(run_main: Run, tmp_path: Path, catalog: LightroomCa
     sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
     reason="file permissions are not enforced (Windows or root)",
 )
-def test_catalog_read_only_file(run_main: Run, tmp_path: Path, catalog: LightroomCatalog) -> None:
+def test_catalog_read_only_file(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
     # a catalog without write permission can be used
     file = write_xmp(tmp_path / "src" / "a.xmp")
     catalog.add_image(file, City="Osaka")
@@ -171,7 +174,7 @@ def test_catalog_read_only_file(run_main: Run, tmp_path: Path, catalog: Lightroo
     sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
     reason="file permissions are not enforced (Windows or root)",
 )
-def test_catalog_not_readable(run_main: Run, tmp_path: Path, catalog: LightroomCatalog) -> None:
+def test_catalog_not_readable(run_main: Run, tmp_path: Path, catalog: LightroomCatalogBuilder) -> None:
     write_xmp(tmp_path / "src" / "a.xmp")
     catalog.path.chmod(0o000)
     try:
@@ -184,7 +187,7 @@ def test_catalog_not_readable(run_main: Run, tmp_path: Path, catalog: LightroomC
 
 def test_catalog_path_special_characters(run_main: Run, tmp_path: Path) -> None:
     # spaces, "?", "#" and "%" must be escaped in the read only URI
-    catalog = LightroomCatalog(tmp_path / "Light room #1?", name="My Catalog 100%.lrcat")
+    catalog = LightroomCatalogBuilder(tmp_path / "Light room #1?", name="My Catalog 100%.lrcat")
     file = write_xmp(tmp_path / "src" / "a.xmp")
     catalog.add_image(file, City="Osaka")
     result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
@@ -194,7 +197,7 @@ def test_catalog_path_special_characters(run_main: Run, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("name", ["Catalog.LRCAT", "Catalog.LrCat", "catalog.lrcat"])
 def test_catalog_extension_any_case(run_main: Run, tmp_path: Path, name: str) -> None:
-    catalog = LightroomCatalog(tmp_path / "lightroom", name=name)
+    catalog = LightroomCatalogBuilder(tmp_path / "lightroom", name=name)
     file = write_xmp(tmp_path / "src" / "a.xmp")
     catalog.add_image(file, City="Osaka")
     result = run_main("-i", tmp_path / "src", "-l", catalog.folder)
@@ -203,8 +206,8 @@ def test_catalog_extension_any_case(run_main: Run, tmp_path: Path, name: str) ->
 
 
 def test_catalog_first_by_name(run_main: Run, tmp_path: Path) -> None:
-    first = LightroomCatalog(tmp_path / "lightroom", name="a.lrcat")
-    second = LightroomCatalog(tmp_path / "lightroom", name="b.LRCAT")
+    first = LightroomCatalogBuilder(tmp_path / "lightroom", name="a.lrcat")
+    second = LightroomCatalogBuilder(tmp_path / "lightroom", name="b.LRCAT")
     file = write_xmp(tmp_path / "src" / "a.xmp")
     first.add_image(file, City="First")
     second.add_image(file, City="Second")
@@ -219,7 +222,7 @@ def test_catalog_folders_and_other_files_ignored(run_main: Run, tmp_path: Path) 
         (folder / name).mkdir(parents=True)
     (folder / "a.lrcat-wal").write_text("", encoding="UTF-8")
     (folder / "a.lrcat.lock").write_text("", encoding="UTF-8")
-    catalog = LightroomCatalog(folder, name="z.lrcat")
+    catalog = LightroomCatalogBuilder(folder, name="z.lrcat")
     file = write_xmp(tmp_path / "src" / "a.xmp")
     catalog.add_image(file, City="Osaka")
     result = run_main("-i", tmp_path / "src", "-l", folder)

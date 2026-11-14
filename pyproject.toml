@@ -47,10 +47,12 @@ stubPath = "typings"
 reportMissingImports = "information"
 reportMissingTypeStubs = "information"
 reportUnknownMemberType = "information"
+# src (set automatically if extraPaths is not set), shared test helpers (tests/helpers)
+extraPaths = ["src", "tests"]
 # Ty
 [tool.ty.environment]
-# local type stubs (libxmp ships none)
-extra-paths = ["typings"]
+# local type stubs (libxmp ships none), shared test helpers (tests/helpers)
+extra-paths = ["typings", "tests"]
 [tool.ty.rules]
 # ty has no strict mode; enabling all rules is the closest equivalent
 all = "error"
@@ -90,6 +92,10 @@ init-hook='import sys; sys.path.append("src/")'
 # MARK: Testing
 [tool.pytest.ini_options]
 testpaths = [
+    "tests",
+]
+# shared test helpers: from helpers.<module> import ...
+pythonpath = [
     "tests",
 ]
 

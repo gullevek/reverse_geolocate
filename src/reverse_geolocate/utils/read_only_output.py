@@ -2,6 +2,7 @@
 read only output for listing with header and page numbers
 """
 
+from math import ceil
 from typing import Any
 
 from reverse_geolocate.utils.long_lat import (
@@ -119,3 +120,123 @@ class ReadOnlyOutput:
                 path=shorten_path(xmp_file, self.format_length["path"], path_only=True),
             )
         )
+
+
+# MARK: create read only output
+def create_read_only_output(format_length: dict[str, int], file_count: int, filtered: bool) -> ReadOnlyOutput:
+    """
+    builds the line template and the header block for the read only list
+
+    Args:
+        format_length (dict[str, int]): column widths (see output_list_width_adjust)
+        file_count (int): number of files, for the page count
+        filtered (bool): unset filters are used, fewer files may be listed,
+            the page count is only a maximum (marked with "?")
+
+    Returns:
+        ReadOnlyOutput: output with the header and line templates
+    """
+    # after how many lines do we reprint the header
+    header_repeat = 50
+    # how many pages will we have
+    page_all = ceil(file_count / header_repeat)
+    # current page number
+    # page_no = 1
+    # the formatted line for the output, formatted in two passes:
+    # 1st .format(): fills in the {...len} column widths
+    #   ({{ }} => { } so the data placeholders survive this pass)
+    # 2nd .format(): fills in the data (filename, latitude, ...)
+    # NOTE: only the f-string parts below are evaluated at build time,
+    # the plain string parts must not be double escaped
+    format_line = (
+        " {{filename:<{filenamelen}}} | "
+        "{{latitude:>"
+        f"{format_length['latitude']}"
+        "}} | "
+        "{{longitude:>"
+        f"{format_length['longitude']}"
+        "}} | "
+        "{{code:<"
+        f"{format_length['code']}"
+        "}} | "
+        "{{country:<{countrylen}}} | "
+        "{{state:<{statelen}}} | "
+        "{{city:<{citylen}}} | "
+        "{{location:<{locationlen}}} | "
+        "{{path:<{pathlen}}}"
+    )
+    # header line format:
+    # blank line
+    # header title
+    # seperator line
+    # pre replace path length before we add the header titles
+    header_line_2 = format_line.format(
+        filenamelen=format_length["filename"],
+        countrylen=format_length["country"],
+        statelen=format_length["state"],
+        citylen=format_length["city"],
+        locationlen=format_length["location"],
+        pathlen=format_length["path"],
+    ).format(  # the header title line
+        filename="File"[: format_length["filename"]],
+        latitude="Latitude"[: format_length["latitude"]],
+        longitude="Longitude"[: format_length["longitude"]],
+        code="Code",
+        country="Country"[: format_length["country"]],
+        state="State"[: format_length["state"]],
+        city="City"[: format_length["city"]],
+        location="Location"[: format_length["location"]],
+        path="Path"[: format_length["path"]],
+    )
+    header_line_3 = (
+        f"{'-' * (format_length['filename'] + 2)}+"
+        f"{'-' * (format_length['latitude'] + 2)}+"
+        f"{'-' * (format_length['longitude'] + 2)}+"
+        f"{'-' * (format_length['code'] + 2)}+"
+        f"{'-' * (format_length['country'] + 2)}+"
+        f"{'-' * (format_length['state'] + 2)}+"
+        f"{'-' * (format_length['city'] + 2)}+"
+        f"{'-' * (format_length['location'] + 2)}+"
+        f"{'-' * (format_length['path'] + 2)}"
+    )
+    # header block: page line, title line, separator line
+    # title and separator are already formatted, escape any braces for the page format call
+    # with the unset filters fewer files than found may be listed,
+    # so the total page count is only a maximum, mark it with "?"
+    page_all_marker = "?" if filtered else ""
+    header_line = (
+        # can later be set to something else, eg page numbers
+        "> Page {page_no:,}/{page_all:,}"
+        + page_all_marker
+        + "\n"
+        + header_line_2.replace("{", "{{").replace("}", "}}")
+        + "\n"
+        + header_line_3
+    )
+    return ReadOnlyOutput(
+        header_line,
+        format_line,
+        format_length,
+        page_all,
+        header_repeat,
+    )
+
+
+# MARK: read only filter
+def matches_read_only_filter(data_set: dict[str, str], unset_only: bool, unset_gps_only: bool) -> bool:
+    """
+    checks if a data set is listed with the unset filters (both set: either one matches)
+
+    Args:
+        data_set (dict[str, str]): XMP data set
+        unset_only (bool): only list if any field (GPS included) is empty
+        unset_gps_only (bool): only list if GPS latitude or longitude is empty
+
+    Returns:
+        bool: True if the data set is listed
+    """
+    if not unset_only and not unset_gps_only:
+        return True
+    return (unset_only and "" in data_set.values()) or (
+        unset_gps_only and (not data_set["GPSLatitude"] or not data_set["GPSLongitude"])
+    )
