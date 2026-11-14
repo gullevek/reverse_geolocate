@@ -56,9 +56,12 @@ class FakeLookup:
         }
         # fields that replace the default result for a latitude (DMS string)
         self.by_latitude: dict[str, dict[str, str]] = {}
+        # the command line arguments of each call (API key, email, ...)
+        self.call_args: list[Any] = []
 
     def __call__(self, longitude: str, latitude: str, map_type: str, args: Any) -> dict[str, str]:
         self.calls.append({"longitude": longitude, "latitude": latitude, "map_type": map_type})
+        self.call_args.append(args)
         return {**self.result, **self.by_latitude.get(latitude, {})}
 
 
