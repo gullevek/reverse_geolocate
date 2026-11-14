@@ -2,6 +2,7 @@
 various string helpers1
 """
 
+import os
 import unicodedata
 
 # this is for looking up if string is non latin letters
@@ -109,6 +110,50 @@ def format_len(string: str, length: int) -> int:
     # get string length normal, get string length including double byte characters
     # then subtract that from the original length
     return length - (string_len_cjk(string) - len(string))
+
+
+# MARK: shorten path
+def shorten_path(path: str, length: int = 30, file_only: bool = False, path_only: bool = False) -> str:
+    """
+    shortens a path from the left so it fits into length (display width, CJK = 2)
+    if file_only is set only the file name is used, if path_only is set only the folder
+
+    Args:
+        path (str): path
+        length (int, optional): maximum display width to shorten to. Defaults to 30.
+        file_only (bool, optional): only use the file name. Defaults to False.
+        path_only (bool, optional): only use the folder. Defaults to False.
+
+    Raises:
+        ValueError: if file_only and path_only are both set
+
+    Returns:
+        str: shortened path with ".. " in front if it was too long
+    """
+    if file_only and path_only:
+        raise ValueError("shorten_path: file_only and path_only cannot be set both")
+    placeholder = ".. "
+    if file_only:
+        path = os.path.split(path)[1]
+    elif path_only:
+        path = os.path.split(path)[0]
+    if string_len_cjk(path) <= length:
+        return path
+    # not even room for the placeholder
+    if length <= len(placeholder):
+        return placeholder[: max(0, length)]
+    # available width for the path part after the placeholder
+    available = max(0, length - len(placeholder))
+    # collect characters from the right as long as the display width fits
+    # (slicing by character count would be wrong for double width CJK characters)
+    width = 0
+    cut = len(path)
+    for index in range(len(path) - 1, -1, -1):
+        width += string_len_cjk(path[index])
+        if width > available:
+            break
+        cut = index
+    return f"{placeholder}{path[cut:]}"
 
 
 # __END__

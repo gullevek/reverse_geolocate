@@ -13,627 +13,39 @@ in a lightroom catalogue
 MUST HAVE: Python XMP Toolkit (http://python-xmp-toolkit.readthedocs.io/)
 """
 
-import argparse
-import configparser
-
 # import textwrap
-import glob
 import os
-import re
 import sqlite3
 import sys
-from collections.abc import Sequence
 from math import ceil
-from shutil import copyfile, get_terminal_size
-from typing import Any, cast, override
+from shutil import copyfile
+from typing import Literal, cast
 
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import ExempiLoadError, XMPMeta, consts
 
-# user modules below
+from reverse_geolocate.setup.arguments import ArgumentSetup
+from reverse_geolocate.setup.configurate import read_config
+from reverse_geolocate.utils.function_collection import (
+    check_overwrite,
+    get_backup_file_counter,
+    output_list_width_adjust,
+)
 from reverse_geolocate.utils.long_lat import (
-    convert_dms_to_lat,
-    convert_dms_to_long,
     convert_lat_to_dms,
     convert_long_to_dms,
     get_distance,
 )
+from reverse_geolocate.utils.read_only_output import ReadOnlyOutput
 from reverse_geolocate.utils.reverse_geolocate import reverse_geolocate
-from reverse_geolocate.utils.string_helpers import format_len, shorten_string, string_len_cjk
-
-##############################################################
-# FUNCTIONS
-##############################################################
 
 # this is for looking up if string is non latin letters
 # this is used by isLatin and onlyLatinChars
 cache_latin_letters = {}
 
-# ARGPARSE HELPERS
-
-
-class WritableDirFolder(argparse.Action):
-    """
-    checks if this is a writeable folder OR file
-    AND it works on nargs *
-    stores a list[str] of the valid paths in the namespace
-    """
-
-    @override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str | Sequence[Any] | None,
-        option_string: str | None = None,
-    ) -> None:
-        if isinstance(values, str) or values is None:
-            raise argparse.ArgumentError(self, f"{values} is not a list of writable dirs or files")
-        else:
-            # we loop through list (this is because of nargs *)
-            for prospective_dir in values:
-                # if valid and writeable (dir or file)
-                if os.access(prospective_dir, os.W_OK):
-                    # init new output array
-                    out: list[str] = []
-                    # if we have a previous list in the namespace extend current list
-                    if isinstance(getattr(namespace, self.dest), list):
-                        out.extend(getattr(namespace, self.dest))
-                    # add the new dir to it
-                    out.append(prospective_dir)
-                    # and write that list back to the self.dest in the namespace
-                    setattr(namespace, self.dest, out)
-                else:
-                    raise argparse.ArgumentError(self, f"{prospective_dir} is not a writable dir or file")
-
-
-class ReadableDir(argparse.Action):
-    """
-    custom define to check if it is a valid directory
-    stores the path as str in the namespace
-    """
-
-    @override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str | Sequence[Any] | None,
-        option_string: str | None = None,
-    ) -> None:
-        prospective_dir = values
-        if not isinstance(prospective_dir, str):
-            raise argparse.ArgumentError(self, f"{prospective_dir} is not a readable dir")
-        else:
-            if not os.path.isdir(prospective_dir):
-                raise argparse.ArgumentError(self, f"{prospective_dir} is not an existing directory")
-            if os.access(prospective_dir, os.R_OK):
-                setattr(namespace, self.dest, prospective_dir)
-            else:
-                raise argparse.ArgumentError(self, f"{prospective_dir} is not a readable dir")
-
-
-class DistanceValues(argparse.Action):
-    """
-    check distance values are valid, format: <number>[ ]m|km
-    stores the distance as int in meters in the namespace
-    """
-
-    @override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str | Sequence[Any] | None,
-        option_string: str | None = None,
-    ) -> None:
-        if not isinstance(values, str):
-            raise argparse.ArgumentError(self, f"{values} is not a valid distance, use <number>m or <number>km")
-        else:
-            _distance = re.match(r"^(\d+)\s?(m|km)$", values)
-            if _distance:
-                # convert to int in meters
-                distance_meters = int(_distance.group(1))
-                if _distance.group(2) == "km":
-                    distance_meters *= 1000
-                setattr(namespace, self.dest, distance_meters)
-            else:
-                raise argparse.ArgumentError(self, f"{values} is not a valid distance, use <number>m or <number>km")
-
-
-# MAIN FUNCTIONS
-
-
-def check_overwrite(data: str, key: str, field_controls: list[str] | None, args: argparse.Namespace) -> bool:
-    """
-    checks with field control flags if given data for key should be written
-        1) no field controls: write only if data is not set
-        2) only "overwrite": write always (data set or not)
-        3) only field keys: write only those keys and only if data is not set
-        4) field keys + "overwrite": write only those keys, data set or not
-
-    Args:
-        data (str): current value of the field
-        key (str): xmp key, eg "City", compared case insensitive to the field controls
-        field_controls (list[str] | None): -f/--field values from args (None if not set)
-        args (argparse.Namespace): command line arguments (for debug flag)
-
-    Returns:
-        bool: True if the data for the key can be written
-    """
-    # set, so duplicate -f flags (eg -f overwrite -f overwrite) do not change the result
-    controls = set(field_controls or [])
-    overwrite = "overwrite" in controls
-    # selected fields without the overwrite flag
-    field_keys = controls - {"overwrite"}
-    key_lower = key.lower()
-    # key is selected if no fields are restricted or the key is one of them
-    key_selected = not field_keys or key_lower in field_keys
-    status = key_selected and (not data or overwrite)
-    if args.debug:
-        print(
-            f"Data set: {'YES' if data else 'NO'}, "
-            f"Key: {key_lower}, "
-            f"Field Controls: {sorted(field_keys)}, "
-            f"Overwrite: {'OVERWRITE' if overwrite else 'NOT OVERWRITE'}, "
-            f"Key in Field Controls: {'KEY OK' if key_selected else 'KEY NOT MATCHING'}, "
-            f"OVERWRITE: {status}"
-        )
-    return status
-
-
-def shorten_path(path: str, length: int = 30, file_only: bool = False, path_only: bool = False) -> str:
-    """
-    shortens a path from the left so it fits into length (display width, CJK = 2)
-    if file_only is set only the file name is used, if path_only is set only the folder
-
-    Args:
-        path (str): path
-        length (int, optional): maximum display width to shorten to. Defaults to 30.
-        file_only (bool, optional): only use the file name. Defaults to False.
-        path_only (bool, optional): only use the folder. Defaults to False.
-
-    Raises:
-        ValueError: if file_only and path_only are both set
-
-    Returns:
-        str: shortened path with ".. " in front if it was too long
-    """
-    if file_only and path_only:
-        raise ValueError("shorten_path: file_only and path_only cannot be set both")
-    placeholder = ".. "
-    if file_only:
-        path = os.path.split(path)[1]
-    elif path_only:
-        path = os.path.split(path)[0]
-    if string_len_cjk(path) <= length:
-        return path
-    # not even room for the placeholder
-    if length <= len(placeholder):
-        return placeholder[: max(0, length)]
-    # available width for the path part after the placeholder
-    available = max(0, length - len(placeholder))
-    # collect characters from the right as long as the display width fits
-    # (slicing by character count would be wrong for double width CJK characters)
-    width = 0
-    cut = len(path)
-    for index in range(len(path) - 1, -1, -1):
-        width += string_len_cjk(path[index])
-        if width > available:
-            break
-        cut = index
-    return f"{placeholder}{path[cut:]}"
-
-
-# def print_header(header, lines=0, header_line=0):
-#     """
-#     prints header line and header seperator line
-
-#     Args:
-#         header (str): header string
-#         lines (int, optional): line counter. Defaults to 0.
-#         header_line (int, optional): print header counter grigger. Defaults to 0.
-
-#     Returns:
-#         int: line counter +1
-#     """
-#     global page_no
-#     if lines == header_line:
-#         # add one to the pages shown and reset the lines to start new page
-#         page_no += 1
-#         lines = 0
-#         # print header
-#         print(f"{header}")
-#     lines += 1
-#     return lines
-
-
-class ReadOnlyOutput:
-    """
-    for read only listing: prints the header block with page numbers
-    at the start and again after every header_print_line data lines
-    """
-
-    def __init__(self, header_template: str, max_pages: int, header_print_line: int) -> None:
-        """
-        Args:
-            header_template (str): header block, with {page_no} and {page_all} placeholders
-            max_pages (int): total pages, for the page_all placeholder
-            header_print_line (int): reprint the header after this many data lines, 0 for never
-        """
-        self.header_template: str = header_template
-        self.page_all: int = max(1, max_pages)
-        self.header_print: int = header_print_line
-        # page currently shown, 0 = no header printed yet
-        self.page_no: int = 0
-        # data lines printed on the current page
-        self.lines: int = 0
-
-    def print_header(self) -> None:
-        """
-        prints the header block for the next page and starts a new page
-        """
-        self.page_no += 1
-        self.lines = 0
-        print(self.header_template.format(page_no=self.page_no, page_all=self.page_all))
-
-    def next_line(self) -> None:
-        """
-        call before each data line, prints the header if this is the first line
-        or the current page is full
-        """
-        if self.page_no == 0 or (self.header_print > 0 and self.lines >= self.header_print):
-            self.print_header()
-        self.lines += 1
-
-
-def file_sort_number(file: str) -> int:
-    """
-    gets the BK number for sorting in the file list
-
-    Args:
-        file (str): file name
-
-    Returns:
-        int: number found in the BK string or 0 for none
-    """
-    match = re.match(r".*\.BK\.(\d+)\.xmp$", file)
-    return int(match.group(1)) if match is not None else 0
-
-
-def output_list_width_adjust(args: argparse.Namespace) -> dict[str, int]:
-    """
-    adjusts the size for the format length for the list output
-
-    Args:
-        args (argparse.Namespace): arguments
-
-    Returns:
-        dict[str, int]: format_length dictionary
-    """
-    # various string lengths
-    format_length: dict[str, int] = {
-        "filename": 35,
-        "latitude": 18,
-        "longitude": 18,
-        "code": 4,
-        "country": 15,
-        "state": 18,
-        "city": 20,
-        "location": 25,
-        "path": 40,
-    }
-    if args.compact_view:
-        reduce_percent = 40
-        # all formats are reduced to a mininum, we cut % off
-        for format_key in [
-            "filename",
-            "latitude",
-            "longitude",
-            "country",
-            "state",
-            "city",
-            "location",
-            "path",
-        ]:
-            format_length[format_key] = ceil(
-                format_length[format_key] - ((format_length[format_key] / 100) * reduce_percent)
-            )
-    else:
-        # minimum resize size for a column
-        resize_width_min = 4
-        # the resize percent
-        # start with 10, then increase until we reach max
-        resize_percent_min = 10
-        resize_percent_max = 50
-        # abort flag so we can break out of the second loop too
-        abort = False
-        # formay key order, in which order the elements will be resized
-        format_key_order = []
-        # resize flag: 0 no, 1: make bigger, -1: make smaller
-        # change sizes for print based on terminal size
-        # NOTE: in screen or term this data might NOT be correct
-        # Current size needs the in between and left/right space data
-        current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
-        if current_columns < get_terminal_size().columns:
-            resize = 1
-            format_key_order = ["path", "location", "state", "city", "country", "filename"]
-        else:
-            resize = -1
-            format_key_order = [
-                "latitude",
-                "longitude",
-                "path",
-                "country",
-                "state",
-                "city",
-                "location",
-                "filename",
-            ]
-        # if we have no auto adjust
-        if args.no_autoadjust:
-            # warningn if screen is too small
-            if resize == -1:
-                print("[!!!] Screen layout might be skewed. Increase Terminal width")
-        else:
-            for resize_percent in range(resize_percent_min, resize_percent_max, 10):
-                for format_key in format_key_order:
-                    resize_width = (format_length[format_key] / 100) * resize_percent
-                    # if we down size, make it negative
-                    if resize == -1:
-                        resize_width *= -1
-                    resize_width = ceil(format_length[format_key] + resize_width)
-                    # in case too small, keep old one
-                    format_length[format_key] = (
-                        resize_width if resize_width > resize_width_min else format_length[format_key]
-                    )
-                    # calc new width for check if we can abort
-                    current_columns = sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2
-                    if (resize == 1 and current_columns >= get_terminal_size().columns) or (
-                        resize == -1 and current_columns < get_terminal_size().columns
-                    ):
-                        # check that we are not OVER but one under
-                        width_up = get_terminal_size().columns - current_columns - 1
-                        if (
-                            (resize == 1 and width_up < 0)
-                            or (resize == -1 and width_up != 0)
-                            and format_length["path"] + width_up >= resize_width_min
-                        ):
-                            format_length["path"] += width_up
-                        abort = True
-                        break
-                if abort:
-                    break
-            if sum(format_length.values()) + ((len(format_length) - 1) * 3) + 2 > get_terminal_size().columns:
-                print("[!!!] Screen layout might be skewed. Increase Terminal width")
-    return format_length
-
-
-def get_backup_file_counter(xmp_file: str, args: argparse.Namespace) -> int:
-    """
-    get the next free backup file counter for <name>.BK.<n>.<ext>
-
-    Args:
-        xmp_file (str): xmp file name (with path)
-        args (argparse.Namespace): command line arguments (for debug flag)
-
-    Returns:
-        int: next counter to be used for backup, highest existing + 1, or 1 if none exist
-    """
-    path, file_name = os.path.split(xmp_file)
-    stem, extension = os.path.splitext(file_name)
-    # escape the file name, so glob special characters (eg "[", "*", "?") in it are matched literally
-    # use the extension of the file itself, glob is case sensitive (.xmp vs .XMP)
-    bk_pattern = os.path.join(glob.escape(path), f"{glob.escape(stem)}.BK.*{glob.escape(extension)}")
-    # BK.1, etc -> get the number
-    bk_number_re = re.compile(rf"\.BK\.(\d+){re.escape(extension)}$")
-    bk_numbers = [
-        int(match.group(1)) for bk_file in glob.glob(bk_pattern) if (match := bk_number_re.search(bk_file)) is not None
-    ]
-    bk_file_counter = max(bk_numbers, default=0) + 1
-    if args.debug:
-        print(f"#### **** File: {xmp_file}, Backups: {sorted(bk_numbers)}, Counter: {bk_file_counter}")
-    # return the next correct number for backup
-    return bk_file_counter
-
 
 ##############################################################
-# ARGUMENT PARSING
-##############################################################
-
-
-def argument_parser():
-    """
-    Parses the command line arguments
-
-    Returns:
-        Namespace: parsed arguments
-    """
-
-    parser = argparse.ArgumentParser(
-        description="Reverse Geoencoding based on set Latitude/Longitude data in XMP files",
-        # formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Sample: (todo)",
-    )
-
-    # xmp folder (or folders), or file (or files)
-    # note that the target directory or file needs to be writeable
-    parser.add_argument(
-        "-i",
-        "--include-source",
-        required=True,
-        nargs="*",
-        action=WritableDirFolder,
-        dest="xmp_sources",
-        metavar="XMP SOURCE FOLDER",
-        help=(
-            "The source folder or folders with the XMP files that need reverse geo encoding "
-            "to be set. Single XMP files can be given here"
-        ),
-    )
-    # exclude folders
-    parser.add_argument(
-        "-x",
-        "--exclude-source",
-        nargs="*",
-        action=WritableDirFolder,
-        dest="exclude_sources",
-        metavar="EXCLUDE XMP SOURCE FOLDER",
-        help="Folders and files that will be excluded.",
-    )
-
-    # LR database (base folder)
-    # get .lrcat file in this folder
-    parser.add_argument(
-        "-l",
-        "--lightroom",
-        # required=True,
-        action=ReadableDir,
-        dest="lightroom_folder",
-        metavar="LIGHTROOM FOLDER",
-        help="Lightroom catalogue base folder",
-    )
-
-    # strict LR check with base path next to the file base name
-    parser.add_argument(
-        "-s",
-        "--strict",
-        dest="lightroom_strict",
-        action="store_true",
-        help="Do strict check for Lightroom files including Path in query",
-    )
-
-    # set behaviour override
-    # FLAG: default: only set not filled
-    # other: overwrite all or overwrite if one is missing,
-    # overwrite specifc field (as defined below)
-    # fields: Location, City, State, Country, CountryCode
-    parser.add_argument(
-        "-f",
-        "--field",
-        action="append",
-        type=str.lower,  # make it lowercase for check
-        choices=["overwrite", "location", "city", "state", "country", "countrycode"],
-        dest="field_controls",
-        metavar="<overwrite, location, city, state, country, countrycode>",
-        help=(
-            "On default only set fields that are not set yet. Options are: "
-            "Overwrite (write all new), Location, City, State, Country, CountryCode. "
-            "Multiple can be given for combination overwrite certain fields only "
-            "or set only certain fields. "
-            "If with overwrite the field will be overwritten if already set, "
-            "else it will be always skipped."
-        ),
-    )
-
-    parser.add_argument(
-        "-d",
-        "--fuzzy-cache",
-        type=str.lower,
-        action=DistanceValues,
-        nargs="?",
-        const="10m",  # default is 10m
-        dest="fuzzy_distance",
-        metavar="FUZZY DISTANCE",
-        help=(
-            "Allow fuzzy distance cache lookup. Optional distance can be given, "
-            "if not set default of 10m is used. "
-            "Allowed argument is in the format of 12m or 12km"
-        ),
-    )
-
-    # Google Maps API key to overcome restrictions
-    parser.add_argument(
-        "-g",
-        "--google",
-        dest="google_api_key",
-        metavar="GOOGLE API KEY",
-        help="Set a Google API Maps key to overcome the default lookup limitations",
-    )
-
-    # use open street maps
-    parser.add_argument(
-        "-o",
-        "--openstreetmap",
-        dest="use_openstreetmap",
-        action="store_true",
-        help="Use openstreetmap instead of Google",
-    )
-
-    # email of open street maps requests
-    parser.add_argument(
-        "-e", "--email", dest="email", metavar="EMIL ADDRESS", help="An email address for OpenStreetMap"
-    )
-
-    # write api/email settings to config file
-    parser.add_argument(
-        "-w",
-        "--write-settings",
-        dest="config_write",
-        action="store_true",
-        help="Write Google API or OpenStreetMap email to config file",
-    )
-
-    # only read data and print on screen, do not write anything
-    parser.add_argument(
-        "-r",
-        "--read-only",
-        dest="read_only",
-        action="store_true",
-        help=("Read current values from the XMP file only, do not read from LR or lookup any data and write back"),
-    )
-
-    # only list unset ones
-    parser.add_argument("-u", "--unset-only", dest="unset_only", action="store_true", help="Only list unset XMP files")
-
-    # only list unset GPS codes
-    parser.add_argument(
-        "-p",
-        "--unset-gps-only",
-        dest="unset_gps_only",
-        action="store_true",
-        help="Only list unset XMP files for GPS fields",
-    )
-
-    # don't try to do auto adjust in list view
-    parser.add_argument(
-        "-a",
-        "--no-autoadjust",
-        dest="no_autoadjust",
-        action="store_true",
-        help="Don't try to auto adjust columns",
-    )
-
-    # compact view, compresses columns down to a minimum
-    parser.add_argument("-c", "--compact", dest="compact_view", action="store_true", help="Very compact list view")
-
-    # Do not create backup files
-    parser.add_argument(
-        "-n",
-        "--nobackup",
-        dest="no_xmp_backup",
-        action="store_true",
-        help="Do not create a backup from the XMP file",
-    )
-
-    # verbose args for more detailed output
-    parser.add_argument("-v", "--verbose", action="count", dest="verbose", help="Set verbose output level")
-
-    # debug flag
-    parser.add_argument("--debug", action="store_true", dest="debug", help="Set detailed debug output")
-    # test flag
-    parser.add_argument("--test", action="store_true", dest="test", help="Do not write data back to file")
-
-    # read in the arguments and return the namespace
-    try:
-        return parser.parse_args()
-    except argparse.ArgumentTypeError as e:
-        print(f"Argument error: {e}")
-        sys.exit(1)
-
-
-##############################################################
-# MAIN CODE
+# MARK: MAIN CODE
 ##############################################################
 
 
@@ -641,96 +53,20 @@ def main():
     """
     Main code run
     """
-    args = argument_parser()
+    try:
+        args = ArgumentSetup().get_args()
+    except SystemExit as e:
+        # catch the SystemExit from the ArgumentParser and exit with the same code
+        sys.exit(e.code)
 
-    # init verbose to 0 if not set
-    if not args.verbose:
-        args.verbose = 0
-    # init exclude source to list if not set
-    if not args.exclude_sources:
-        # typed empty list, an untyped [] makes args.exclude_sources a list[Unknown]
-        no_exclude_sources: list[str] = []
-        args.exclude_sources = no_exclude_sources
-    # init args unset (for list view) with 0 if unset
-    if not args.unset_only:
-        args.unset_only = 0
-
-    if args.debug:
-        print(
-            "### ARGUMENT VARS: "
-            f"I: {args.xmp_sources}, X: {args.exclude_sources}, L: {args.lightroom_folder}, "
-            f"F: {args.field_controls}, D: {args.fuzzy_distance}, M: {args.use_openstreetmap}, "
-            f"G: {args.google_api_key}, E: {args.email}, R: {args.read_only}, "
-            f"U: {args.unset_only}, A: {args.no_autoadjust}, C: {args.compact_view}, "
-            f"N: {args.no_xmp_backup}, W: {args.config_write}, V: {args.verbose}, "
-            f"D: {args.debug}, T: {args.test}"
-        )
-
-    # error flag
-    error = False
     # set search map type
-    map_type = "google" if not args.use_openstreetmap else "openstreetmap"
-    # if -g and -o, error
-    if args.google_api_key and args.use_openstreetmap:
-        print("You cannot set a Google API key and use OpenStreetMap at the same time")
-        error = True
-    # or if -g and -e
-    if args.google_api_key and args.email:
-        print("You cannot set a Google API key and OpenStreetMap email at the same time")
-        error = True
-    # or -e and no -o
-    if args.email and not args.use_openstreetmap:
-        print("You cannot set an OpenStreetMap email and not use OpenStreetMap")
-        error = True
-    # if email and not basic valid email (@ .)
-    if args.email and not re.match(r"^.+@.+\.[A-Za-z]{1,}$", args.email):
-        print(f"Not a valid email for OpenStreetMap: {args.email}")
-        error = True
-    # on error exit here
-    if error:
-        sys.exit(1)
+    map_type: Literal["google", "openstreetmap"] = "google" if not args.use_openstreetmap else "openstreetmap"
 
-    config = configparser.ConfigParser()
-    # try to find config file in following order
-    # $HOME/.config/
-    config_file = "reverse_geolocate.cfg"
-    config_folder = os.path.expanduser("~/.config/reverseGeolocate/")
-    config_data = os.path.join(f"{config_folder}", f"{config_file}")
-    # if file exists read, if not skip unless we have write flag and
-    # google api or openstreetmaps email
-    if os.path.isfile(config_data):
-        config.read(config_data)
-        # check if api group & setting is there. also never overwrite argument given data
-        if "API" in config:
-            if "googleapikey" in config["API"] and not args.google_api_key:
-                args.google_api_key = config["API"]["googleapikey"]
-            if "openstreetmapemail" in config["API"] and not args.email:
-                args.email = config["API"]["openstreetmapemail"]
-    # write data if exists and changed
-    if args.config_write and (args.google_api_key or args.email):
-        config_change = False
-        # check if new value differs, if yes, change and write
-        if "API" not in config:
-            config["API"] = {}
-        if args.google_api_key and (
-            "googleapikey" not in config["API"] or config["API"]["googleapikey"] != args.google_api_key
-        ):
-            config["API"]["googleapikey"] = args.google_api_key
-            config_change = True
-        if args.email and (
-            "openstreetmapemail" not in config["API"] or config["API"]["openstreetmapemail"] != args.email
-        ):
-            config["API"]["openstreetmapemail"] = args.email
-            config_change = True
-        if config_change:
-            # if we do not have the base folder create that first
-            if not os.path.exists(config_folder):
-                os.makedirs(config_folder)
-            with open(config_data, "w", encoding="UTF-8") as fptr:
-                config.write(fptr)
-    if args.debug:
-        print(f"### OVERRIDE API: G: {args.google_api_key}, O: {args.email}")
+    # error flag for erros
+    error = False
+    args = read_config(args)
 
+    # MARK: core settings
     # The XMP fields const lookup values
     # XML/XMP
     # READ:
@@ -865,6 +201,7 @@ def main():
     if error:
         sys.exit(1)
 
+    # MARK: load XMPMeta data
     # init the XML meta for handling
     try:
         xmp = XMPMeta()
@@ -879,6 +216,7 @@ def main():
     # exclude folders without trailing separator, build once and not for every file
     exclude_folders: set[str] = {source.rstrip(os.sep) for source in exclude_sources}
 
+    # MARK: read data
     # loop through the xmp_sources (folder or files)
     # and read in the XMP data for LAT/LONG, other data
     for xmp_file_source in xmp_sources:
@@ -909,13 +247,14 @@ def main():
             if xmp_file_source not in work_files and xmp_file_source not in exclude_sources:
                 work_files.append(xmp_file_source)
                 count["all"] += 1
+
+    # MARK: work on the files
     if args.debug:
         print(f"### Work Files {work_files}")
-
     format_line = ""
     header_line = ""
     format_length = {}
-    header_print = None
+    read_only_output = None
     # if we have read only we print list format style
     if args.read_only:
         # adjust the output width for the list view
@@ -930,21 +269,6 @@ def main():
         # the formatted line for the output
         # 4 {} => final replace: data (2 pre replaces)
         # 1 {} => length replace here
-        # format_line = (
-        #     " {{{{filename:<{}}}}} | {{{{latitude:>{}}}}} | {{{{longitude:>{}}}}} | "
-        #     "{{{{code:<{}}}}} | {{{{country:<{}}}}} | {{{{state:<{}}}}} | {{{{city:<{}}}}} | "
-        #     "{{{{location:<{}}}}} | {{{{path:<{}}}}}"
-        # ).format(
-        #     "{filenamelen}",
-        #     format_length['latitude'],
-        #     format_length['longitude'],
-        #     format_length['code'],
-        #     "{countrylen}",
-        #     "{statelen}",
-        #     "{citylen}",
-        #     "{locationlen}",
-        #     "{pathlen}"  # set path len replacer variable
-        # )
         format_line = (
             " {{{{filename:<{{filenamelen}}}}}} | "
             "{{{{latitude:>"
@@ -966,45 +290,6 @@ def main():
         # blank line
         # header title
         # seperator line
-        # header_line = (
-        #     # f"{'> Page {page_no:,}/{page_all:,}'}"
-        #     "{}"
-        #     "{}"
-        #     "{}"
-        # ).format(
-        #     # can later be set to something else, eg page numbers
-        #     '> Page {page_no:,}/{page_all:,}',
-        #     # pre replace path length before we add the header titles
-        #     format_line.format(
-        #         filenamelen=format_length['filename'],
-        #         countrylen=format_length['country'],
-        #         statelen=format_length['state'],
-        #         citylen=format_length['city'],
-        #         locationlen=format_length['location'],
-        #         pathlen=format_length['path']
-        #     ).format(  # the header title line
-        #         filename='File'[:format_length['filename']],
-        #         latitude='Latitude'[:format_length['latitude']],
-        #         longitude='Longitude'[:format_length['longitude']],
-        #         code='Code',
-        #         country='Country'[:format_length['country']],
-        #         state='State'[:format_length['state']],
-        #         city='City'[:format_length['city']],
-        #         location='Location'[:format_length['location']],
-        #         path='Path'[:format_length['path']]
-        #     ),
-        #     (
-        #         f"{'-' * (format_length['filename'] + 2)}+"
-        #         f"{'-' * (format_length['latitude'] + 2)}+"
-        #         f"{'-' * (format_length['longitude'] + 2)}+"
-        #         f"{'-' * (format_length['code'] + 2)}+"
-        #         f"{'-' * (format_length['country'] + 2)}+"
-        #         f"{'-' * (format_length['state'] + 2)}+"
-        #         f"{'-' * (format_length['city'] + 2)}+"
-        #         f"{'-' * (format_length['location'] + 2)}+"
-        #         f"{'-' * (format_length['path'] + 2)}"
-        #     )
-        # )
         # pre replace path length before we add the header titles
         header_line_2 = format_line.format(
             filenamelen=format_length["filename"],
@@ -1050,15 +335,21 @@ def main():
             + header_line_3
         )
         # header print class
-        header_print = ReadOnlyOutput(header_line, page_all, header_repeat)
+        read_only_output = ReadOnlyOutput(
+            header_line,
+            format_line,
+            format_length,
+            page_all,
+            header_repeat,
+        )
         # print header
         # print_header(header_line.format(page_no=page_no, page_all=page_all))
-        header_print.print_header()
+        read_only_output.print_header()
         # print no files found if we have no files
         if not work_files:
             print(f"{'[!!!] No files found':<60}")
 
-    # ### MAIN WORK LOOP
+    # MARK: MAIN WORK LOOP
     # now we just loop through each file and work on them
     for xmp_file in work_files:
         if not args.read_only:
@@ -1090,6 +381,7 @@ def main():
             if args.debug:
                 print(f"### => XMP: {xmp_field_value}:{xmp_field_key} => {data_set[xmp_field_key]}")
         if args.read_only:
+            # MARK: read only
             # view only if list all or if data is unset
             if (
                 (not args.unset_only and not args.unset_gps_only)
@@ -1103,55 +395,57 @@ def main():
                 #   count['read'],
                 #   header_repeat
                 # )
-                if header_print is not None:
-                    header_print.next_line()
+                if read_only_output is not None:
+                    read_only_output.next_line()
+                    read_only_output.print_line(xmp_file, data_set)
                 # the data content
-                print(
-                    format_line.format(
-                        # for all possible non latin fields we do adjust
-                        # if it has double byte characters inside
-                        filenamelen=format_len(
-                            shorten_path(xmp_file, format_length["filename"], file_only=True),
-                            format_length["filename"],
-                        ),
-                        countrylen=format_len(
-                            shorten_string(data_set["Country"], width=format_length["country"]),
-                            format_length["country"],
-                        ),
-                        statelen=format_len(
-                            shorten_string(data_set["State"], width=format_length["state"]),
-                            format_length["state"],
-                        ),
-                        citylen=format_len(
-                            shorten_string(data_set["City"], width=format_length["city"]),
-                            format_length["city"],
-                        ),
-                        locationlen=format_len(
-                            shorten_string(data_set["Location"], width=format_length["location"]),
-                            format_length["location"],
-                        ),
-                        pathlen=format_len(
-                            shorten_path(xmp_file, format_length["path"], path_only=True),
-                            format_length["path"],
-                        ),
-                    ).format(
-                        # shorten from the left
-                        filename=shorten_path(xmp_file, format_length["filename"], file_only=True),
-                        # cut off from the right
-                        latitude=(str(convert_dms_to_lat(data_set["GPSLatitude"]))[: format_length["latitude"]]),
-                        longitude=(str(convert_dms_to_long(data_set["GPSLongitude"]))[: format_length["longitude"]]),
-                        # is only 2 chars
-                        code=data_set["CountryCode"][:2].center(4),
-                        # shorten from the right
-                        country=shorten_string(data_set["Country"], width=format_length["country"]),
-                        state=shorten_string(data_set["State"], width=format_length["state"]),
-                        city=shorten_string(data_set["City"], width=format_length["city"]),
-                        location=shorten_string(data_set["Location"], width=format_length["location"]),
-                        path=shorten_path(xmp_file, format_length["path"], path_only=True),
-                    )
-                )
+                # print(
+                #     format_line.format(
+                #         # for all possible non latin fields we do adjust
+                #         # if it has double byte characters inside
+                #         filenamelen=format_len(
+                #             shorten_path(xmp_file, format_length["filename"], file_only=True),
+                #             format_length["filename"],
+                #         ),
+                #         countrylen=format_len(
+                #             shorten_string(data_set["Country"], width=format_length["country"]),
+                #             format_length["country"],
+                #         ),
+                #         statelen=format_len(
+                #             shorten_string(data_set["State"], width=format_length["state"]),
+                #             format_length["state"],
+                #         ),
+                #         citylen=format_len(
+                #             shorten_string(data_set["City"], width=format_length["city"]),
+                #             format_length["city"],
+                #         ),
+                #         locationlen=format_len(
+                #             shorten_string(data_set["Location"], width=format_length["location"]),
+                #             format_length["location"],
+                #         ),
+                #         pathlen=format_len(
+                #             shorten_path(xmp_file, format_length["path"], path_only=True),
+                #             format_length["path"],
+                #         ),
+                #     ).format(
+                #         # shorten from the left
+                #         filename=shorten_path(xmp_file, format_length["filename"], file_only=True),
+                #         # cut off from the right
+                #         latitude=(str(convert_dms_to_lat(data_set["GPSLatitude"]))[: format_length["latitude"]]),
+                #         longitude=(str(convert_dms_to_long(data_set["GPSLongitude"]))[: format_length["longitude"]]),
+                #         # is only 2 chars
+                #         code=data_set["CountryCode"][:2].center(4),
+                #         # shorten from the right
+                #         country=shorten_string(data_set["Country"], width=format_length["country"]),
+                #         state=shorten_string(data_set["State"], width=format_length["state"]),
+                #         city=shorten_string(data_set["City"], width=format_length["city"]),
+                #         location=shorten_string(data_set["Location"], width=format_length["location"]),
+                #         path=shorten_path(xmp_file, format_length["path"], path_only=True),
+                #     )
+                # )
                 count["listed"] += 1
         else:
+            # MARK: write mode
             # ### LR Action Flag (data ok)
             lightroom_data_ok = True
             # sqlite3.Row (row_factory is set) or None if nothing found / no lightroom
@@ -1358,10 +652,12 @@ def main():
                 print("[SKIP]")
                 count["skipped"] += 1
 
+    # MARK: close DB
     # close DB connection
     if use_lightroom and lrdb is not None:
         lrdb.close()
 
+    # MARK: print stats
     # end stats only if we write
     print(f"{'=' * 44}")
     print(f"XMP Files found                  : {count['all']:9,}")
@@ -1386,7 +682,7 @@ def main():
 
 
 ##############################################################
-# MAIN RUN
+# MARK: MAIN RUN
 ##############################################################
 
 if __name__ == "__main__":

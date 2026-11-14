@@ -33,3 +33,8 @@ lint-fix-ruff:
 
 lint-fix-ty:
 	uv run ty check --fix
+
+test:
+	uv run pytest
+
+.PHONY: default format-check format lint lint-all lint-ruff lint-ty lint-pyright lint-fix lint-fix-ruff lint-fix-ty test
