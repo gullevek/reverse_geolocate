@@ -76,6 +76,7 @@ def check_overwrite(data: str, key: str, field_controls: list[str] | None, args:
 def file_sort_number(file: str) -> int:
     """
     gets the BK number for sorting in the file list
+    the match is case insensitive (.BK.1.xmp, .BK.1.XMP, .bk.1.xmp, ...)
 
     Args:
         file (str): file name
@@ -83,7 +84,7 @@ def file_sort_number(file: str) -> int:
     Returns:
         int: number found in the BK string or 0 for none
     """
-    match = re.match(r".*\.BK\.(\d+)\.xmp$", file)
+    match = re.match(r".*\.BK\.(\d+)\.xmp$", file, flags=re.IGNORECASE)
     return int(match.group(1)) if match is not None else 0
 
 

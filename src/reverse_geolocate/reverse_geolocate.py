@@ -230,12 +230,13 @@ def main():
             # or glob glob all .xmp files + directory
             for root, _, files in os.walk(xmp_file_source):
                 for file in sorted(files):
+                    # 0) has an .xmp extension, in any case (.xmp, .XMP, .Xmp, ...)
                     # 1) but has no .BK. inside
                     # 2) file is not in exclude list
                     # 3) full folder is not in exclude list
                     file_path = os.path.join(root, file)
                     if (
-                        file.endswith(".xmp")
+                        file.lower().endswith(".xmp")
                         and ".BK." not in file
                         and file_path not in exclude_sources
                         and root.rstrip(os.sep) not in exclude_folders
