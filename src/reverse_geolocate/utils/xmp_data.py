@@ -8,12 +8,11 @@ import os
 import shutil
 import tempfile
 from argparse import Namespace
-from shutil import copyfile
 
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
 from libxmp import XMPError, XMPMeta, consts
 
-from reverse_geolocate.utils.function_collection import get_backup_file_counter
+from reverse_geolocate.utils.backup import create_backup
 
 # The XMP fields const lookup values
 # exif:GPSLatitude, exif:GPSLongitude: stored in Degree,Min.Sec[NESW] format
@@ -106,11 +105,8 @@ def write_xmp_file(xmp: XMPMeta, xmp_file: str, backup: bool, args: Namespace) -
     temp_file = ""
     try:
         if backup:
-            # next free backup number, highest existing + 1
-            bk_file_counter = get_backup_file_counter(xmp_file, args)
-            name, extension = os.path.splitext(xmp_file)
-            backup_file = f"{name}.BK.{bk_file_counter}{extension}"
-            copyfile(xmp_file, backup_file)
+            # next free backup number, an existing backup is never overwritten
+            backup_file = create_backup(xmp_file, debug=bool(args.debug))
         # temporary file in the same folder (same file system), hidden name
         folder, file_name = os.path.split(target_file)
         fd, temp_file = tempfile.mkstemp(dir=folder, prefix=f".{file_name}.", suffix=".tmp")

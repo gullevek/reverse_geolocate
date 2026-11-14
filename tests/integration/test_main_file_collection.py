@@ -76,7 +76,21 @@ def test_extension_any_case_listed(run_main: Run, tmp_path: Path) -> None:
 def test_backup_files_skipped(run_main: Run, tmp_path: Path) -> None:
     src = tmp_path / "src"
     files = make_files(src, "a.xmp", "a.BK.1.xmp", "a.BK.2.xmp", "b.BK.x.xmp")
-    assert collect(run_main, "-i", src) == files[:1]
+    # b.BK.x.xmp is not a backup name (no number): it is used
+    assert collect(run_main, "-i", src) == [files[0], files[3]]
+
+
+def test_backup_files_any_case_skipped(run_main: Run, tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    files = make_files(src, "a.xmp", "a.bk.1.xmp", "b.xmp", "b.Bk.2.Xmp", "c.XMP", "c.BK.3.XMP")
+    assert collect(run_main, "-i", src) == [files[0], files[2], files[4]]
+
+
+def test_names_with_bk_not_skipped(run_main: Run, tmp_path: Path) -> None:
+    # ".BK." in the name, but not a backup name: used
+    src = tmp_path / "src"
+    files = make_files(src, "Trip.BK.Paris.xmp", "a.BK.xmp", "a.BK.1.2026.xmp")
+    assert collect(run_main, "-i", src) == sorted(files)
 
 
 def test_empty_folder(run_main: Run, tmp_path: Path) -> None:

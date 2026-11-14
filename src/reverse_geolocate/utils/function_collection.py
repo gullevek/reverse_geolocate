@@ -2,9 +2,6 @@
 Collection of various functions
 """
 
-import glob
-import os
-import re
 import unicodedata
 from argparse import Namespace
 from math import ceil
@@ -72,22 +69,6 @@ def check_overwrite(data: str, key: str, field_controls: list[str] | None, args:
 #         print(f"{header}")
 #     lines += 1
 #     return lines
-
-
-# MARK: file sort number
-def file_sort_number(file: str) -> int:
-    """
-    gets the BK number for sorting in the file list
-    the match is case insensitive (.BK.1.xmp, .BK.1.XMP, .bk.1.xmp, ...)
-
-    Args:
-        file (str): file name
-
-    Returns:
-        int: number found in the BK string or 0 for none
-    """
-    match = re.match(r".*\.BK\.(\d+)\.xmp$", file, flags=re.IGNORECASE)
-    return int(match.group(1)) if match is not None else 0
 
 
 # MARK: output list width adjust
@@ -267,35 +248,6 @@ def get_display_path(file_path: str, base_path: Path) -> str:
     if normalized.is_relative_to(base_path):
         return str(normalized.relative_to(base_path))
     return file_path
-
-
-# MARK: get backup file counter
-def get_backup_file_counter(xmp_file: str, args: Namespace) -> int:
-    """
-    get the next free backup file counter for <name>.BK.<n>.<ext>
-
-    Args:
-        xmp_file (str): xmp file name (with path)
-        args (Namespace): command line arguments (for debug flag)
-
-    Returns:
-        int: next counter to be used for backup, highest existing + 1, or 1 if none exist
-    """
-    path, file_name = os.path.split(xmp_file)
-    stem, extension = os.path.splitext(file_name)
-    # escape the file name, so glob special characters (eg "[", "*", "?") in it are matched literally
-    # use the extension of the file itself, glob is case sensitive (.xmp vs .XMP)
-    bk_pattern = os.path.join(glob.escape(path), f"{glob.escape(stem)}.BK.*{glob.escape(extension)}")
-    # BK.1, etc -> get the number
-    bk_number_re = re.compile(rf"\.BK\.(\d+){re.escape(extension)}$")
-    bk_numbers = [
-        int(match.group(1)) for bk_file in glob.glob(bk_pattern) if (match := bk_number_re.search(bk_file)) is not None
-    ]
-    bk_file_counter = max(bk_numbers, default=0) + 1
-    if args.debug:
-        print(f"#### **** File: {xmp_file}, Backups: {sorted(bk_numbers)}, Counter: {bk_file_counter}")
-    # return the next correct number for backup
-    return bk_file_counter
 
 
 # __END__

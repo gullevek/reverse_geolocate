@@ -12,7 +12,6 @@ import pytest
 
 from reverse_geolocate.utils.function_collection import (
     check_overwrite,
-    file_sort_number,
     get_display_path,
     is_path_excluded,
     normalize_exclude_paths,
@@ -21,40 +20,6 @@ from reverse_geolocate.utils.function_collection import (
 )
 
 NO_DEBUG = Namespace(debug=False)
-
-
-# MARK: file_sort_number
-@pytest.mark.parametrize(
-    ("file", "expected"),
-    [
-        ("photo.xmp", 0),
-        ("photo.BK.1.xmp", 1),
-        ("photo.BK.12.xmp", 12),
-        ("/some/path/photo.BK.3.xmp", 3),
-        ("photo.BK.xmp", 0),
-        ("photo.BK.x.xmp", 0),
-        # case insensitive
-        ("photo.BK.3.XMP", 3),
-        ("photo.BK.4.Xmp", 4),
-        ("photo.bk.5.xmp", 5),
-        ("photo.Bk.6.XMP", 6),
-        ("photo.XMP", 0),
-        # number must be directly before the extension
-        ("photo.BK.3.xmp.tmp", 0),
-    ],
-)
-def test_file_sort_number(file: str, expected: int) -> None:
-    assert file_sort_number(file) == expected
-
-
-def test_file_sort_number_sorting() -> None:
-    files = ["a.BK.10.xmp", "a.xmp", "a.BK.2.xmp", "a.BK.1.xmp"]
-    assert sorted(files, key=file_sort_number) == ["a.xmp", "a.BK.1.xmp", "a.BK.2.xmp", "a.BK.10.xmp"]
-
-
-def test_file_sort_number_sorting_mixed_case() -> None:
-    files = ["a.BK.3.XMP", "a.XMP", "a.bk.2.xmp", "a.BK.1.Xmp"]
-    assert sorted(files, key=file_sort_number) == ["a.XMP", "a.BK.1.Xmp", "a.bk.2.xmp", "a.BK.3.XMP"]
 
 
 # MARK: check_overwrite

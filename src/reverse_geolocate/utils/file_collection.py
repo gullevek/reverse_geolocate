@@ -5,13 +5,15 @@ collect the XMP files to work on from the -i sources, without the -x excludes
 import os
 from pathlib import Path
 
+from reverse_geolocate.utils.backup import is_backup_file
 from reverse_geolocate.utils.function_collection import is_path_excluded, normalize_exclude_paths, normalize_path
 
 
 def is_xmp_work_file(file_name: str) -> bool:
     """
     checks if a file found in a folder is an XMP file to work on:
-    .xmp extension in any case (.xmp, .XMP, .Xmp, ...), but not a backup file (.BK.)
+    .xmp extension in any case (.xmp, .XMP, .Xmp, ...),
+    but not a backup file (<name>.BK.<number>.xmp in any case, see is_backup_file)
 
     Args:
         file_name (str): file name without folder
@@ -19,7 +21,7 @@ def is_xmp_work_file(file_name: str) -> bool:
     Returns:
         bool: True if the file should be used
     """
-    return file_name.lower().endswith(".xmp") and ".BK." not in file_name
+    return file_name.lower().endswith(".xmp") and not is_backup_file(file_name)
 
 
 def collect_work_files(xmp_sources: list[str], exclude_sources: list[str]) -> list[str]:

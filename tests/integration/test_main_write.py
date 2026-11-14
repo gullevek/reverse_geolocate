@@ -145,6 +145,36 @@ def test_backup_counter_after_gap(run_main: Run, tmp_path: Path) -> None:
     assert (tmp_path / "src" / "a.BK.3.xmp").read_text(encoding="UTF-8") == "old backup"
 
 
+def test_backup_after_lower_case_backup(run_main: Run, tmp_path: Path) -> None:
+    # an existing lower case backup is counted and never overwritten
+    file = write_xmp(tmp_path / "src" / "a.xmp")
+    (tmp_path / "src" / "a.bk.1.xmp").write_text("old backup", encoding="UTF-8")
+    result = run_main("-i", tmp_path / "src")
+    assert result.statuses() == {"a.xmp": "UPDATED"}
+    assert (tmp_path / "src" / "a.bk.1.xmp").read_text(encoding="UTF-8") == "old backup"
+    assert (tmp_path / "src" / "a.BK.2.xmp").is_file()
+    assert location(file) == LOOKUP_FIELDS
+
+
+def test_backup_upper_case_file_after_lower_case_backup(run_main: Run, tmp_path: Path) -> None:
+    write_xmp(tmp_path / "src" / "a.XMP")
+    (tmp_path / "src" / "a.BK.1.xmp").write_text("old backup", encoding="UTF-8")
+    run_main("-i", tmp_path / "src")
+    assert (tmp_path / "src" / "a.BK.1.xmp").read_text(encoding="UTF-8") == "old backup"
+    assert (tmp_path / "src" / "a.BK.2.XMP").is_file()
+
+
+def test_lower_case_backup_not_processed(run_main: Run, tmp_path: Path, lookup: FakeLookup) -> None:
+    # a lower case backup in the folder is not processed (no lookup, not written, no backup of it)
+    write_xmp(tmp_path / "src" / "a.xmp", **OSAKA)
+    old_backup = write_xmp(tmp_path / "src" / "a.bk.1.xmp")
+    before = old_backup.read_bytes()
+    result = run_main("-i", tmp_path / "src", "-v")
+    assert result.statuses() == {"a.xmp": "SKIP"}
+    assert lookup.calls == []
+    assert old_backup.read_bytes() == before
+
+
 @pytest.mark.parametrize("flag", ["-n", "--nobackup"])
 def test_no_backup(run_main: Run, tmp_path: Path, flag: str) -> None:
     file = write_xmp(tmp_path / "src" / "a.xmp")

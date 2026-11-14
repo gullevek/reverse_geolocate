@@ -31,8 +31,12 @@ def touch(folder: Path, *names: str) -> list[str]:
         ("2026.11.10_a.xmp", True),
         ("a.BK.1.xmp", False),
         ("a.BK.1.XMP", False),
-        # the backup marker is upper case only
-        ("a.bk.1.xmp", True),
+        # backups in any case
+        ("a.bk.1.xmp", False),
+        ("a.Bk.2.Xmp", False),
+        # ".BK." in the name, but no backup name
+        ("Trip.BK.Paris.xmp", True),
+        ("a.BK.xmp", True),
         ("a.jpg", False),
         ("a.xmp.bak", False),
         ("xmp", False),

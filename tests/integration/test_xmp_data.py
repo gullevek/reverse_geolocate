@@ -10,12 +10,13 @@ import stat
 import sys
 from argparse import Namespace
 from pathlib import Path
+from typing import IO
 
 import pytest
 from integration_helpers import SAMPLE_FILES, TOKYO_LAT, TOKYO_LONG, read_xmp, write_xmp
 from libxmp import XMPMeta, consts
 
-from reverse_geolocate.utils import xmp_data
+from reverse_geolocate.utils import backup, xmp_data
 from reverse_geolocate.utils.xmp_data import XMP_FIELDS, XmpReadError, XmpWriteError, read_xmp_file, write_xmp_file
 
 NO_DEBUG = Namespace(debug=False)
@@ -344,12 +345,13 @@ def test_write_disk_full_backup(folder: Path, monkeypatch: pytest.MonkeyPatch) -
     xmp = change_city(file, "Kyoto")
     before = file.read_bytes()
 
-    def partial_copy(source: str, destination: str) -> None:
+    def partial_copy(source: IO[bytes], destination: IO[bytes]) -> None:
         # a partial backup is written, then the disk is full
-        Path(destination).write_text("partial", encoding="UTF-8")
+        destination.write(b"partial")
+        destination.flush()
         disk_full()
 
-    monkeypatch.setattr(xmp_data, "copyfile", partial_copy)
+    monkeypatch.setattr(backup.shutil, "copyfileobj", partial_copy)
     with pytest.raises(XmpWriteError, match="No space left on device"):
         write_xmp_file(xmp, str(file), backup=True, args=NO_DEBUG)
     # the partial backup is removed, the file is unchanged
