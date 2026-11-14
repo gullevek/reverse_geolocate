@@ -113,7 +113,7 @@ def reverse_geolocate_open_street_map(longitude: float, latitude: float, args: a
     # debug output
     if args.debug:
         print(f"OpenStreetMap search for Lat: {latitude}, Long: {longitude}")
-    if args.debug and args.verbose >= 1:
+    if args.debug and args.verbose >= 2:
         print(f"OpenStreetMap response: {response} => JSON: {response.json()}")
     # type map
     # Country to Location and for each in order of priority
@@ -195,7 +195,7 @@ def reverse_geolocate_google(longitude: float, latitude: float, args: argparse.N
     # debug output
     if args.debug:
         print(f"Google search for Lat: {latitude}, Long: {longitude} with {response.url}")
-    if args.debug and args.verbose >= 1:
+    if args.debug and args.verbose >= 2:
         print(f"Google response: {response} => JSON: {response_json}")
     # type map
     # For automated return of correct data into set to return

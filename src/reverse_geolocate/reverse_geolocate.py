@@ -31,13 +31,13 @@ from reverse_geolocate.utils.function_collection import (
     get_backup_file_counter,
     output_list_width_adjust,
 )
+from reverse_geolocate.utils.geolocate import reverse_geolocate
 from reverse_geolocate.utils.long_lat import (
     convert_lat_to_dms,
     convert_long_to_dms,
     get_distance,
 )
 from reverse_geolocate.utils.read_only_output import ReadOnlyOutput
-from reverse_geolocate.utils.reverse_geolocate import reverse_geolocate
 
 # this is for looking up if string is non latin letters
 # this is used by isLatin and onlyLatinChars
@@ -352,8 +352,18 @@ def main():
     # MARK: MAIN WORK LOOP
     # now we just loop through each file and work on them
     for xmp_file in work_files:
-        if not args.read_only:
-            print(f"---> {xmp_file}: ", end="")
+        # get the script run location and remove that path from the xmp_file
+        # and write this new file name to a print file variable
+        script_path = os.path.dirname(os.path.realpath(__file__))
+        xmp_real_path = os.path.realpath(xmp_file)
+        try:
+            common_path = os.path.commonpath([script_path, xmp_real_path])
+            xmp_file_print = os.path.relpath(xmp_real_path, common_path)
+        except ValueError:
+            # no common path (e.g. different drives on Windows)
+            xmp_file_print = xmp_file
+        if args.debug:
+            print(f"---> {xmp_file} -> {xmp_file_print}: ", end="")
 
         # ### ACTION FLAGs
         write_file = False
@@ -379,7 +389,7 @@ def main():
             else:
                 data_set[xmp_field_key] = ""
             if args.debug:
-                print(f"### => XMP: {xmp_field_value}:{xmp_field_key} => {data_set[xmp_field_key]}")
+                print(f"### [{xmp_file}] => XMP: {xmp_field_value}:{xmp_field_key} => {data_set[xmp_field_key]}")
         if args.read_only:
             # MARK: read only
             # view only if list all or if data is unset
@@ -390,59 +400,9 @@ def main():
             ):
                 # for read only we print out the data formatted
                 # headline check, do we need to print that
-                # count['read'] = print_header(
-                #   header_line.format(page_no=page_no, page_all=page_all),
-                #   count['read'],
-                #   header_repeat
-                # )
                 if read_only_output is not None:
                     read_only_output.next_line()
                     read_only_output.print_line(xmp_file, data_set)
-                # the data content
-                # print(
-                #     format_line.format(
-                #         # for all possible non latin fields we do adjust
-                #         # if it has double byte characters inside
-                #         filenamelen=format_len(
-                #             shorten_path(xmp_file, format_length["filename"], file_only=True),
-                #             format_length["filename"],
-                #         ),
-                #         countrylen=format_len(
-                #             shorten_string(data_set["Country"], width=format_length["country"]),
-                #             format_length["country"],
-                #         ),
-                #         statelen=format_len(
-                #             shorten_string(data_set["State"], width=format_length["state"]),
-                #             format_length["state"],
-                #         ),
-                #         citylen=format_len(
-                #             shorten_string(data_set["City"], width=format_length["city"]),
-                #             format_length["city"],
-                #         ),
-                #         locationlen=format_len(
-                #             shorten_string(data_set["Location"], width=format_length["location"]),
-                #             format_length["location"],
-                #         ),
-                #         pathlen=format_len(
-                #             shorten_path(xmp_file, format_length["path"], path_only=True),
-                #             format_length["path"],
-                #         ),
-                #     ).format(
-                #         # shorten from the left
-                #         filename=shorten_path(xmp_file, format_length["filename"], file_only=True),
-                #         # cut off from the right
-                #         latitude=(str(convert_dms_to_lat(data_set["GPSLatitude"]))[: format_length["latitude"]]),
-                #         longitude=(str(convert_dms_to_long(data_set["GPSLongitude"]))[: format_length["longitude"]]),
-                #         # is only 2 chars
-                #         code=data_set["CountryCode"][:2].center(4),
-                #         # shorten from the right
-                #         country=shorten_string(data_set["Country"], width=format_length["country"]),
-                #         state=shorten_string(data_set["State"], width=format_length["state"]),
-                #         city=shorten_string(data_set["City"], width=format_length["city"]),
-                #         location=shorten_string(data_set["Location"], width=format_length["location"]),
-                #         path=shorten_path(xmp_file, format_length["path"], path_only=True),
-                #     )
-                # )
                 count["listed"] += 1
         else:
             # MARK: write mode
@@ -637,19 +597,20 @@ def main():
                     with open(xmp_file, "w", encoding="UTF-8") as fptr:
                         fptr.write(xmp.serialize_to_str(omit_packet_wrapper=True))
                 else:
-                    print(f"[TEST] Would write {data_set} {xmp_file}", end="")
+                    print(f"{xmp_file_print}: [TEST] Would write {data_set} {xmp_file}", end="")
                 if from_cache:
-                    print("[UPDATED FROM CACHE]")
+                    print(f"{xmp_file_print}: [UPDATED FROM CACHE]")
                 else:
-                    print("[UPDATED]")
+                    print(f"{xmp_file_print}: [UPDATED]")
                 count["changed"] += 1
             elif failed:
-                print("[FAILED]")
+                print(f"{xmp_file_print}: [FAILED]")
                 count["failed"] += 1
                 # log data to array for post print
                 failed_files.append(xmp_file)
             else:
-                print("[SKIP]")
+                if args.verbose >= 1:
+                    print(f"{xmp_file_print}: [SKIP]")
                 count["skipped"] += 1
 
     # MARK: close DB

@@ -148,7 +148,11 @@ class ArgumentSetup:
 
         # email of open street maps requests
         self.parser.add_argument(
-            "-e", "--email", dest="email", metavar="EMIL ADDRESS", help="An email address for OpenStreetMap"
+            "-e",
+            "--email",
+            dest="email",
+            metavar="EMAIL ADDRESS",
+            help="An email address for OpenStreetMap",
         )
 
         # write api/email settings to config file

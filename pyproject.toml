@@ -54,7 +54,7 @@ extra-paths = ["typings"]
 [tool.ty.rules]
 # ty has no strict mode; enabling all rules is the closest equivalent
 all = "error"
-unresolved-import = "warn"
+import-not-found = "warn"
 # Black (SUPERSEEDED BY RUFF format)
 [tool.black]
 # set 10 short for better formatting
