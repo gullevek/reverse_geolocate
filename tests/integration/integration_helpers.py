@@ -44,6 +44,7 @@ class FakeLookup:
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        # default result for every lookup
         self.result: dict[str, str] = {
             "CountryCode": "JP",
             "Country": "Japan",
@@ -53,10 +54,12 @@ class FakeLookup:
             "status": "OK",
             "error_message": "",
         }
+        # fields that replace the default result for a latitude (DMS string)
+        self.by_latitude: dict[str, dict[str, str]] = {}
 
     def __call__(self, longitude: str, latitude: str, map_type: str, args: Any) -> dict[str, str]:
         self.calls.append({"longitude": longitude, "latitude": latitude, "map_type": map_type})
-        return dict(self.result)
+        return {**self.result, **self.by_latitude.get(latitude, {})}
 
 
 # MARK: run result
@@ -80,6 +83,16 @@ class RunResult:
             if line.startswith(name) and ":" in line:
                 return int(line.split(":", 1)[1].strip().replace(",", ""))
         raise AssertionError(f"no statistic line: {name}")
+
+    def statuses(self) -> dict[str, str]:
+        """write mode per file status: file name -> UPDATED, UPDATED FROM CACHE, FAILED, SKIP"""
+        statuses: dict[str, str] = {}
+        for line in self.lines:
+            if not line.endswith("]") or ": [" not in line:
+                continue
+            path, status = line.rsplit(": [", 1)
+            statuses[path.rsplit("/", 1)[-1]] = status.removesuffix("]")
+        return statuses
 
     def table_rows(self) -> list[list[str]]:
         """data rows of the read only list, cells stripped"""

@@ -11,6 +11,7 @@ import pytest
 from reverse_geolocate.utils.function_collection import (
     check_overwrite,
     file_sort_number,
+    get_display_path,
     is_path_excluded,
     normalize_exclude_paths,
     normalize_path,
@@ -217,6 +218,48 @@ def test_is_path_excluded_relative(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir("/")
     assert is_path_excluded("photos/excluded/a.xmp", EXCLUDES) is True
     assert is_path_excluded("photos/a.xmp", EXCLUDES) is False
+
+
+# MARK: get_display_path
+# a path that does not exist and has no symlinks (on macOS /home and /tmp are symlinks)
+BASE = normalize_path("/display_base/user/photos")
+
+
+@pytest.mark.parametrize(
+    ("file_path", "expected"),
+    [
+        # inside the base folder: relative
+        ("/display_base/user/photos/a.xmp", "a.xmp"),
+        ("/display_base/user/photos/2026/11/a.xmp", "2026/11/a.xmp"),
+        ("/display_base/user/photos//2026/./a.xmp", "2026/a.xmp"),
+        ("/display_base/user/other/../photos/a.xmp", "a.xmp"),
+        # outside: unchanged as given
+        ("/display_base/user/a.xmp", "/display_base/user/a.xmp"),
+        ("/display_base/user/photos2/a.xmp", "/display_base/user/photos2/a.xmp"),
+        ("/other/a.xmp", "/other/a.xmp"),
+        ("/display_base/user/./a.xmp", "/display_base/user/./a.xmp"),
+    ],
+)
+def test_get_display_path(file_path: str, expected: str) -> None:
+    assert get_display_path(file_path, BASE) == expected
+
+
+def test_get_display_path_relative_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir("/")
+    assert get_display_path("display_base/user/photos/a.xmp", BASE) == "a.xmp"
+    assert get_display_path("display_base/user/a.xmp", BASE) == "display_base/user/a.xmp"
+
+
+def test_get_display_path_root_base() -> None:
+    assert get_display_path("/display_base/user/a.xmp", Path("/")) == "display_base/user/a.xmp"
+
+
+def test_get_display_path_symlink(tmp_path: Path) -> None:
+    # the base is normalized (symlinks resolved), the file is normalized for the check
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    base = normalize_path(tmp_path / "real")
+    assert get_display_path(str(tmp_path / "link" / "a.xmp"), base) == "a.xmp"
 
 
 # MARK: output_list_width_adjust (compact view only, the others read the terminal size)
