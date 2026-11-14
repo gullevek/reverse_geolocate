@@ -287,7 +287,10 @@ class WriteRun:
 
     def set_changed_values(self, xmp: XMPMeta, data_set: dict[str, str], data_set_original: dict[str, str]) -> set[str]:
         """
-        sets all changed values (that pass the overwrite check) in the XMP object
+        sets all changed values in the XMP object:
+        - location fields only if they pass the overwrite check (-f field controls)
+        - GPS is not selectable with -f: missing GPS (only filled from Lightroom, never replaced)
+          is always written, so location data is never written without the coordinates it is based on
 
         Args:
             xmp (XMPMeta): XMP object of the file
@@ -299,11 +302,14 @@ class WriteRun:
         """
         written_keys: set[str] = set()
         for key, value in data_set.items():
-            if value != data_set_original[key] and check_overwrite(
+            if value == data_set_original[key]:
+                continue
+            if key in LOCATION_KEYS and not check_overwrite(
                 data_set_original[key], key, self.args.field_controls, self.args
             ):
-                xmp.set_property(XMP_FIELDS[key], key, value)
-                written_keys.add(key)
+                continue
+            xmp.set_property(XMP_FIELDS[key], key, value)
+            written_keys.add(key)
         return written_keys
 
 
