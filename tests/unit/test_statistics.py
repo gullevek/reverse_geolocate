@@ -78,6 +78,20 @@ def test_failed_files(capsys: pytest.CaptureFixture[str]) -> None:
     ]
 
 
+def test_read_only_unreadable_files(capsys: pytest.CaptureFixture[str]) -> None:
+    statistics = RunStatistics(found=3, listed=1, failed=2, failed_files=["/a/1.xmp", "/b/2.xmp"])
+    print_statistics(statistics, read_only=True, use_lightroom=False)
+    assert capsys.readouterr().out.splitlines() == [
+        "=" * 44,
+        "XMP Files found                  :         3",
+        "XMP Files listed                 :         1",
+        "XMP Files not readable           :         2",
+        "-" * 44,
+        "Files that could not be read:",
+        "/a/1.xmp, /b/2.xmp",
+    ]
+
+
 def test_no_failed_files(capsys: pytest.CaptureFixture[str]) -> None:
     print_statistics(RunStatistics(), read_only=False, use_lightroom=False)
     assert "Files that failed to update:" not in capsys.readouterr().out

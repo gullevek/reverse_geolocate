@@ -73,6 +73,35 @@ def test_missing_gps_shown_empty(run_main: Run, tmp_path: Path) -> None:
     assert result.table_rows()[0][1:3] == ["", ""]
 
 
+def test_damaged_file_not_listed_and_continues(run_main: Run, tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    write_xmp(src / "1.xmp")
+    (src / "2_broken.xmp").write_text("just text", encoding="UTF-8")
+    (src / "3_binary.xmp").write_bytes(bytes(range(256)))
+    write_xmp(src / "4.xmp")
+    result = run_main("-r", "-i", src)
+    assert result.exit_code is None
+    # the damaged files get a message line, the other files are listed
+    assert [row[0] for row in result.table_rows()] == ["1.xmp", "4.xmp"]
+    messages = [line for line in result.lines if line.startswith("(!) Could not read XMP data")]
+    assert len(messages) == 2
+    assert messages[0].startswith("(!) Could not read XMP data (no valid XMP")
+    assert messages[0].endswith(str(src / "2_broken.xmp"))
+    assert messages[1].startswith("(!) Could not read XMP data (not a text file (UTF-8)):")
+    assert result.stat("XMP Files found") == 4
+    assert result.stat("XMP Files listed") == 2
+    assert result.stat("XMP Files not readable") == 2
+    assert result.lines[result.lines.index("Files that could not be read:") + 1] == (
+        f"{src / '2_broken.xmp'}, {src / '3_binary.xmp'}"
+    )
+
+
+def test_no_unreadable_statistics_without_errors(run_main: Run, sample_folder: Path) -> None:
+    result = run_main("-r", "-i", sample_folder)
+    assert "XMP Files not readable" not in result.out
+    assert "Files that could not be read:" not in result.out
+
+
 def test_empty_folder(run_main: Run, tmp_path: Path) -> None:
     (tmp_path / "empty").mkdir()
     result = run_main("-r", "-i", tmp_path / "empty")

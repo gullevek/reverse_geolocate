@@ -432,6 +432,44 @@ def test_invalid_gps_fails(run_main: Run, tmp_path: Path, lookup: FakeLookup, la
     assert not (tmp_path / "src" / "a.BK.1.xmp").exists()
 
 
+@pytest.mark.parametrize("damaged", ["just text", "", "binary"])
+def test_damaged_xmp_file_fails_and_continues(run_main: Run, tmp_path: Path, lookup: FakeLookup, damaged: str) -> None:
+    (tmp_path / "src").mkdir()
+    broken = tmp_path / "src" / "1_broken.xmp"
+    if damaged == "binary":
+        broken.write_bytes(bytes(range(256)))
+    elif damaged:
+        broken.write_text(damaged, encoding="UTF-8")
+    else:
+        # empty file: valid, but no GPS data
+        broken.write_text("", encoding="UTF-8")
+    before = broken.read_bytes()
+    second = write_xmp(tmp_path / "src" / "2.xmp")
+    third = write_xmp(tmp_path / "src" / "3.xmp", GPSLatitude=FAR_LAT)
+    result = run_main("-i", tmp_path / "src")
+    assert result.exit_code is None
+    # the damaged file fails, the files after it are processed normally
+    assert result.statuses() == {"1_broken.xmp": "FAILED", "2.xmp": "UPDATED", "3.xmp": "UPDATED"}
+    assert location(second) == location(third) == LOOKUP_FIELDS
+    assert broken.read_bytes() == before
+    assert len(lookup.calls) == 2
+    assert result.stat("Failed reverse GeoLocate") == 1
+    assert result.lines[result.lines.index("Files that failed to update:") + 1] == str(broken)
+
+
+@pytest.mark.parametrize(("damaged", "message"), [("just text", "no valid XMP"), ("binary", "not a text file")])
+def test_damaged_xmp_file_message(run_main: Run, tmp_path: Path, damaged: str, message: str) -> None:
+    (tmp_path / "src").mkdir()
+    broken = tmp_path / "src" / "a.xmp"
+    if damaged == "binary":
+        broken.write_bytes(bytes(range(256)))
+    else:
+        broken.write_text(damaged, encoding="UTF-8")
+    result = run_main("-i", tmp_path / "src")
+    line = next(line for line in result.lines if line.endswith("a.xmp: [FAILED]"))
+    assert line.startswith(f"(!) Could not read XMP data ({message}")
+
+
 def test_lookup_without_country_fails(run_main: Run, tmp_path: Path, lookup: FakeLookup, snapshot: Snapshot) -> None:
     lookup.result = {**lookup.result, "Country": ""}
     write_xmp(tmp_path / "src" / "a.xmp")
