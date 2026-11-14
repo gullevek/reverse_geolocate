@@ -1,0 +1,134 @@
+"""
+helpers for the main() integration tests: XMP file writing/reading and output parsing
+"""
+
+import ast
+from dataclasses import dataclass, field
+from html import escape
+from pathlib import Path
+from typing import Any, cast
+
+# sample XMP files from the repository (Tokyo, GPS set, no location data)
+SAMPLE_FOLDER = Path(__file__).parents[2] / "data" / "orig"
+SAMPLE_FILES = sorted(SAMPLE_FOLDER.glob("*.xmp"))
+TOKYO_LAT = "35,40.4617426011N"
+TOKYO_LONG = "139,44.3986917318E"
+# terminal width for the read only list
+TERMINAL_COLUMNS = 200
+
+XMP_TEMPLATE = """<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"
+    xmlns:exif="http://ns.adobe.com/exif/1.0/"
+    xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/"
+{attributes}/>
+ </rdf:RDF>
+</x:xmpmeta>
+"""
+# data set key -> XMP attribute name
+XMP_ATTRIBUTES = {
+    "GPSLatitude": "exif:GPSLatitude",
+    "GPSLongitude": "exif:GPSLongitude",
+    "Location": "Iptc4xmpCore:Location",
+    "City": "photoshop:City",
+    "State": "photoshop:State",
+    "Country": "photoshop:Country",
+    "CountryCode": "Iptc4xmpCore:CountryCode",
+}
+
+
+# MARK: fake lookup
+class FakeLookup:
+    """replaces reverse_geolocate() in main, records the calls"""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.result: dict[str, str] = {
+            "CountryCode": "JP",
+            "Country": "Japan",
+            "State": "Tokyo",
+            "City": "Shibuya",
+            "Location": "Jingumae",
+            "status": "OK",
+            "error_message": "",
+        }
+
+    def __call__(self, longitude: str, latitude: str, map_type: str, args: Any) -> dict[str, str]:
+        self.calls.append({"longitude": longitude, "latitude": latitude, "map_type": map_type})
+        return dict(self.result)
+
+
+# MARK: run result
+@dataclass
+class RunResult:
+    out: str
+    err: str
+    exit_code: int | str | None = None
+    lines: list[str] = field(default_factory=list[str])
+
+    def work_files(self) -> list[str]:
+        """the work file list from the debug output (needs --debug)"""
+        for line in self.lines:
+            if line.startswith("### Work Files "):
+                return cast(list[str], ast.literal_eval(line.removeprefix("### Work Files ")))
+        raise AssertionError("no work files debug line, run with --debug")
+
+    def stat(self, name: str) -> int:
+        """a number from the end statistics, eg stat("XMP Files found")"""
+        for line in self.lines:
+            if line.startswith(name) and ":" in line:
+                return int(line.split(":", 1)[1].strip().replace(",", ""))
+        raise AssertionError(f"no statistic line: {name}")
+
+    def table_rows(self) -> list[list[str]]:
+        """data rows of the read only list, cells stripped"""
+        rows: list[list[str]] = []
+        for line in self.lines:
+            if " | " not in line or line.startswith("---"):
+                continue
+            cells = [cell.strip() for cell in line.split(" | ")]
+            if cells[0] == "File":
+                continue
+            rows.append(cells)
+        return rows
+
+
+# MARK: XMP files
+def write_xmp(path: Path, **fields: str) -> Path:
+    """
+    writes a minimal XMP sidecar file, fields are the data set keys (GPSLatitude, City, ...)
+    by default GPS is set to Tokyo, pass GPSLatitude="" / GPSLongitude="" to leave it out
+    """
+    values = {"GPSLatitude": TOKYO_LAT, "GPSLongitude": TOKYO_LONG, **fields}
+    attributes = "".join(
+        f'    {XMP_ATTRIBUTES[key]}="{escape(value, quote=True)}"\n' for key, value in values.items() if value
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(XMP_TEMPLATE.format(attributes=attributes), encoding="UTF-8")
+    return path
+
+
+def read_xmp(path: Path) -> dict[str, str]:
+    """reads the data set fields back with Exempi, missing fields are empty"""
+    # imported here, so this module can be imported without Exempi
+    from libxmp import XMPMeta
+
+    xmp = XMPMeta()
+    xmp.parse_from_str(path.read_text(encoding="UTF-8"))
+    namespaces = {
+        "GPSLatitude": "http://ns.adobe.com/exif/1.0/",
+        "GPSLongitude": "http://ns.adobe.com/exif/1.0/",
+        "Location": "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/",
+        "City": "http://ns.adobe.com/photoshop/1.0/",
+        "State": "http://ns.adobe.com/photoshop/1.0/",
+        "Country": "http://ns.adobe.com/photoshop/1.0/",
+        "CountryCode": "http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/",
+    }
+    return {
+        key: (xmp.get_property(namespace, key) if xmp.does_property_exist(namespace, key) else "")
+        for key, namespace in namespaces.items()
+    }
+
+
+# __END__

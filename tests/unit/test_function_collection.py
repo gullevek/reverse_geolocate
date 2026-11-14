@@ -4,12 +4,16 @@ unit tests for reverse_geolocate.utils.function_collection
 """
 
 from argparse import Namespace
+from pathlib import Path
 
 import pytest
 
 from reverse_geolocate.utils.function_collection import (
     check_overwrite,
     file_sort_number,
+    is_path_excluded,
+    normalize_exclude_paths,
+    normalize_path,
     output_list_width_adjust,
 )
 
@@ -26,9 +30,12 @@ NO_DEBUG = Namespace(debug=False)
         ("/some/path/photo.BK.3.xmp", 3),
         ("photo.BK.xmp", 0),
         ("photo.BK.x.xmp", 0),
-        # case sensitive
-        ("photo.BK.3.XMP", 0),
-        ("photo.bk.3.xmp", 0),
+        # case insensitive
+        ("photo.BK.3.XMP", 3),
+        ("photo.BK.4.Xmp", 4),
+        ("photo.bk.5.xmp", 5),
+        ("photo.Bk.6.XMP", 6),
+        ("photo.XMP", 0),
         # number must be directly before the extension
         ("photo.BK.3.xmp.tmp", 0),
     ],
@@ -40,6 +47,11 @@ def test_file_sort_number(file: str, expected: int) -> None:
 def test_file_sort_number_sorting() -> None:
     files = ["a.BK.10.xmp", "a.xmp", "a.BK.2.xmp", "a.BK.1.xmp"]
     assert sorted(files, key=file_sort_number) == ["a.xmp", "a.BK.1.xmp", "a.BK.2.xmp", "a.BK.10.xmp"]
+
+
+def test_file_sort_number_sorting_mixed_case() -> None:
+    files = ["a.BK.3.XMP", "a.XMP", "a.bk.2.xmp", "a.BK.1.Xmp"]
+    assert sorted(files, key=file_sort_number) == ["a.XMP", "a.BK.1.Xmp", "a.bk.2.xmp", "a.BK.3.XMP"]
 
 
 # MARK: check_overwrite
@@ -90,6 +102,121 @@ def test_check_overwrite_debug_output(capsys: pytest.CaptureFixture[str]) -> Non
     assert "Overwrite: OVERWRITE" in out
     assert "KEY NOT MATCHING" in out
     assert "OVERWRITE: False" in out
+
+
+# MARK: normalize_path
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("/a/b", "/a/b"),
+        ("/a/b/", "/a/b"),
+        ("/a//b", "/a/b"),
+        ("/a/./b", "/a/b"),
+        ("/a/x/../b", "/a/b"),
+        ("/", "/"),
+        (Path("/a/b/"), "/a/b"),
+    ],
+)
+def test_normalize_path(path: str | Path, expected: str) -> None:
+    # the paths do not need to exist
+    assert normalize_path(path) == Path(expected)
+
+
+def test_normalize_path_relative(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir("/")
+    assert normalize_path("a/b") == Path("/a/b")
+    assert normalize_path("./a/../c") == Path("/c")
+
+
+def test_normalize_path_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    (tmp_path / "link").symlink_to(target)
+    assert normalize_path(tmp_path / "link" / "a.xmp") == normalize_path(target / "a.xmp")
+
+
+# MARK: normalize_exclude_paths
+def test_normalize_exclude_paths() -> None:
+    assert normalize_exclude_paths(["/a/b/", "/a//c", "/a/./d", "/a/x/../e", "/a/b"]) == {
+        Path("/a/b"),
+        Path("/a/c"),
+        Path("/a/d"),
+        Path("/a/e"),
+    }
+
+
+def test_normalize_exclude_paths_relative(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir("/")
+    assert normalize_exclude_paths(["a/b", "./c"]) == {Path("/a/b"), Path("/c")}
+
+
+def test_normalize_exclude_paths_empty() -> None:
+    assert normalize_exclude_paths([]) == set()
+
+
+# MARK: is_path_excluded
+EXCLUDES = normalize_exclude_paths(["/photos/excluded", "/photos/single.xmp"])
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        # the excluded folder itself, with any trailing separator
+        ("/photos/excluded", True),
+        ("/photos/excluded/", True),
+        # everything inside, any depth
+        ("/photos/excluded/a.xmp", True),
+        ("/photos/excluded/sub", True),
+        ("/photos/excluded/sub/deeper/b.xmp", True),
+        # excluded file
+        ("/photos/single.xmp", True),
+        # not normalized paths
+        ("/photos//excluded/a.xmp", True),
+        ("/photos/other/../excluded/a.xmp", True),
+        ("/photos/./single.xmp", True),
+        # only whole names match
+        ("/photos/excluded2", False),
+        ("/photos/excluded.old/a.xmp", False),
+        ("/photos/single.xmp.bak", False),
+        ("/photos/single", False),
+        # parent and siblings
+        ("/photos", False),
+        ("/photos/other/a.xmp", False),
+        ("/", False),
+    ],
+)
+def test_is_path_excluded(path: str, expected: bool) -> None:
+    assert is_path_excluded(path, EXCLUDES) is expected
+
+
+def test_is_path_excluded_no_excludes() -> None:
+    assert is_path_excluded("/photos/a.xmp", set()) is False
+
+
+def test_is_path_excluded_root() -> None:
+    # excluding the root folder excludes everything
+    excludes = normalize_exclude_paths(["/"])
+    assert is_path_excluded("/", excludes) is True
+    assert is_path_excluded("/photos/a.xmp", excludes) is True
+
+
+def test_is_path_excluded_path_object() -> None:
+    assert is_path_excluded(Path("/photos/excluded/a.xmp"), EXCLUDES) is True
+
+
+def test_is_path_excluded_symlink(tmp_path: Path) -> None:
+    # a symlink into an excluded folder is excluded, the link target counts
+    excluded = tmp_path / "excluded"
+    excluded.mkdir()
+    (tmp_path / "link").symlink_to(excluded)
+    excludes = normalize_exclude_paths([str(excluded)])
+    assert is_path_excluded(tmp_path / "link" / "a.xmp", excludes) is True
+
+
+def test_is_path_excluded_relative(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir("/")
+    assert is_path_excluded("photos/excluded/a.xmp", EXCLUDES) is True
+    assert is_path_excluded("photos/a.xmp", EXCLUDES) is False
 
 
 # MARK: output_list_width_adjust (compact view only, the others read the terminal size)
