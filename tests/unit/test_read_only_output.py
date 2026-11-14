@@ -6,7 +6,11 @@ from typing import Any
 
 import pytest
 
-from reverse_geolocate.utils.read_only_output import ReadOnlyOutput
+from reverse_geolocate.utils.read_only_output import (
+    ReadOnlyOutput,
+    create_read_only_output,
+    matches_read_only_filter,
+)
 from reverse_geolocate.utils.string_helpers import string_len_cjk
 
 FORMAT_LENGTH: dict[str, int] = {
@@ -207,6 +211,101 @@ def test_print_line_does_not_change_counters(capsys: pytest.CaptureFixture[str])
     capsys.readouterr()
     assert output.page_no == 0
     assert output.lines == 0
+
+
+# MARK: create_read_only_output
+@pytest.mark.parametrize(("file_count", "page_all"), [(0, 1), (1, 1), (50, 1), (51, 2), (100, 2), (101, 3)])
+def test_create_page_count(file_count: int, page_all: int) -> None:
+    output = create_read_only_output(FORMAT_LENGTH, file_count, filtered=False)
+    assert output.page_all == page_all
+    assert output.header_print == 50
+
+
+@pytest.mark.parametrize(("filtered", "marker"), [(False, ""), (True, "?")])
+def test_create_header(capsys: pytest.CaptureFixture[str], filtered: bool, marker: str) -> None:
+    create_read_only_output(FORMAT_LENGTH, 120, filtered=filtered).print_header()
+    page, title, separator = capsys.readouterr().out.splitlines()
+    assert page == f"> Page 1/3{marker}"
+    assert [cell.strip() for cell in title.split(" | ")] == [
+        "File",
+        "Latitude",
+        "Longitude",
+        "Code",
+        "Country",
+        "State",
+        "City",
+        "Location",
+        "Path",
+    ]
+    # separator "+" at the column borders of the title line
+    assert [i for i, char in enumerate(separator) if char == "+"] == [
+        i + 1 for i in range(len(title)) if title.startswith(" | ", i)
+    ]
+
+
+def test_create_header_titles_cut(capsys: pytest.CaptureFixture[str]) -> None:
+    narrow = dict.fromkeys(FORMAT_LENGTH, 3)
+    create_read_only_output(narrow, 1, filtered=False).print_header()
+    title = capsys.readouterr().out.splitlines()[1]
+    assert [cell.strip() for cell in title.split(" | ")][:3] == ["Fil", "Lat", "Lon"]
+
+
+def test_create_line_matches_header(capsys: pytest.CaptureFixture[str]) -> None:
+    output = create_read_only_output(FORMAT_LENGTH, 1, filtered=False)
+    output.print_header()
+    output.print_line("/photos/a.xmp", make_data_set())
+    _, title, _, line = capsys.readouterr().out.splitlines()
+    assert len(line) == len(title)
+    assert [cell.strip() for cell in line.split(" | ")] == [
+        "a.xmp",
+        "35.5",
+        "139.5",
+        "JP",
+        "Japan",
+        "Tokyo",
+        "Tokyo",
+        "Shibuya",
+        "/photos",
+    ]
+
+
+# MARK: matches_read_only_filter
+COMPLETE = {
+    "GPSLatitude": "35,30.0N",
+    "GPSLongitude": "139,30.0E",
+    "Location": "L",
+    "City": "C",
+    "State": "S",
+    "Country": "X",
+    "CountryCode": "XX",
+}
+
+
+@pytest.mark.parametrize(
+    ("changes", "unset_only", "unset_gps_only", "expected"),
+    [
+        # no filter: always
+        ({}, False, False, True),
+        ({"City": ""}, False, False, True),
+        # unset only: any empty field
+        ({}, True, False, False),
+        ({"City": ""}, True, False, True),
+        ({"GPSLatitude": ""}, True, False, True),
+        # unset GPS only: latitude or longitude empty
+        ({}, False, True, False),
+        ({"City": ""}, False, True, False),
+        ({"GPSLatitude": ""}, False, True, True),
+        ({"GPSLongitude": ""}, False, True, True),
+        # both: either one
+        ({}, True, True, False),
+        ({"City": ""}, True, True, True),
+        ({"GPSLongitude": ""}, True, True, True),
+    ],
+)
+def test_matches_read_only_filter(
+    changes: dict[str, str], unset_only: bool, unset_gps_only: bool, expected: bool
+) -> None:
+    assert matches_read_only_filter({**COMPLETE, **changes}, unset_only, unset_gps_only) is expected
 
 
 # __END__
