@@ -194,7 +194,7 @@ class ArgumentSetup:
             "--unset-only",
             dest="unset_only",
             action="store_true",
-            help="Only list unset XMP files",
+            help="Only list unset XMP files (only with -r)",
         )
 
         # only list unset GPS codes
@@ -203,7 +203,7 @@ class ArgumentSetup:
             "--unset-gps-only",
             dest="unset_gps_only",
             action="store_true",
-            help="Only list unset XMP files for GPS fields",
+            help="Only list unset XMP files for GPS fields (only with -r)",
         )
 
         # don't try to do auto adjust in list view
@@ -212,7 +212,7 @@ class ArgumentSetup:
             "--no-autoadjust",
             dest="no_autoadjust",
             action="store_true",
-            help="Don't try to auto adjust columns",
+            help="Don't try to auto adjust columns (only with -r)",
         )
 
         # compact view, compresses columns down to a minimum
@@ -221,7 +221,7 @@ class ArgumentSetup:
             "--compact",
             dest="compact_view",
             action="store_true",
-            help="Very compact list view",
+            help="Very compact list view (only with -r)",
         )
 
         # Do not create backup files
@@ -332,6 +332,21 @@ class ArgumentSetup:
         if self.args.email and not is_valid_email(self.args.email):
             print(f"Not a valid email for OpenStreetMap: {self.args.email}")
             error = True
+        # the list options only work with the read only list, without -r a write run would start
+        if not self.args.read_only:
+            list_options = [
+                flag
+                for flag, is_set in (
+                    ("-u", self.args.unset_only),
+                    ("-p", self.args.unset_gps_only),
+                    ("-a", self.args.no_autoadjust),
+                    ("-c", self.args.compact_view),
+                )
+                if is_set
+            ]
+            if list_options:
+                print(f"The list options {', '.join(list_options)} can only be used with -r (read only list)")
+                error = True
         # on error exit here
         if error:
             raise SystemExit("Argument error, see above")

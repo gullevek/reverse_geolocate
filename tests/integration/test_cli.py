@@ -78,6 +78,16 @@ def test_argument_combination_error(tmp_path: Path) -> None:
     assert "Argument error, see above" in result.stderr
 
 
+def test_list_option_without_read_only(tmp_path: Path, samples: Path) -> None:
+    before = {path.name: path.read_bytes() for path in samples.iterdir()}
+    result = run_command(tmp_path, "-i", "samples", "-u", "-c")
+    assert result.returncode == 1
+    assert "The list options -u, -c can only be used with -r (read only list)" in result.stdout
+    assert "Argument error, see above" in result.stderr
+    # nothing written
+    assert {path.name: path.read_bytes() for path in samples.iterdir()} == before
+
+
 # MARK: read only
 def test_read_only(tmp_path: Path, samples: Path) -> None:
     before = {path.name: path.read_bytes() for path in samples.iterdir()}

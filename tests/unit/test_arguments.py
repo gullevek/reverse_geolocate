@@ -204,9 +204,6 @@ def test_verbose(source: str, argv: list[str], expected: int) -> None:
         ("-o", "--openstreetmap", "use_openstreetmap"),
         ("-w", "--write-settings", "config_write"),
         ("-r", "--read-only", "read_only"),
-        ("-p", "--unset-gps-only", "unset_gps_only"),
-        ("-a", "--no-autoadjust", "no_autoadjust"),
-        ("-c", "--compact", "compact_view"),
         ("-n", "--nobackup", "no_xmp_backup"),
     ],
 )
@@ -216,9 +213,55 @@ def test_bool_flags(source: str, short: str, long: str, dest: str) -> None:
     assert getattr(get_args("-i", source, long), dest) is True
 
 
-@pytest.mark.parametrize("flag", ["-u", "--unset-only"])
-def test_unset_only(source: str, flag: str) -> None:
-    assert get_args("-i", source, flag).unset_only is True
+@pytest.mark.parametrize(
+    ("short", "long", "dest"),
+    [
+        ("-u", "--unset-only", "unset_only"),
+        ("-p", "--unset-gps-only", "unset_gps_only"),
+        ("-a", "--no-autoadjust", "no_autoadjust"),
+        ("-c", "--compact", "compact_view"),
+    ],
+)
+def test_list_flags_with_read_only(source: str, short: str, long: str, dest: str) -> None:
+    assert getattr(get_args("-i", source, "-r", short), dest) is True
+    assert getattr(get_args("-i", source, long, "--read-only"), dest) is True
+
+
+@pytest.mark.parametrize("flag", ["-u", "--unset-only", "-p", "--unset-gps-only", "-a", "--no-autoadjust", "-c"])
+def test_list_flags_without_read_only(source: str, capsys: pytest.CaptureFixture[str], flag: str) -> None:
+    # without -r a write run would start: error before anything is done
+    with pytest.raises(SystemExit) as exc_info:
+        get_args("-i", source, flag)
+    assert exc_info.value.code == ARGUMENT_ERROR
+    assert "can only be used with -r (read only list)" in capsys.readouterr().out
+
+
+def test_list_flags_without_read_only_all_listed(source: str, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        get_args("-i", source, "-c", "--test", "-u", "-a", "-p")
+    # one message with all given list options, in a fixed order
+    assert capsys.readouterr().out == "The list options -u, -p, -a, -c can only be used with -r (read only list)\n"
+
+
+def test_list_flags_error_with_other_errors(source: str, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        get_args("-i", source, "-u", "-g", "KEY", "-o")
+    out = capsys.readouterr().out
+    assert "You cannot set a Google API key and use OpenStreetMap at the same time" in out
+    assert "The list options -u can only be used with -r (read only list)" in out
+
+
+def test_list_flags_help(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        get_args("-h")
+    help_text = " ".join(capsys.readouterr().out.split())
+    for text in (
+        "Only list unset XMP files (only with -r)",
+        "Only list unset XMP files for GPS fields (only with -r)",
+        "Don't try to auto adjust columns (only with -r)",
+        "Very compact list view (only with -r)",
+    ):
+        assert text in help_text
 
 
 @pytest.mark.parametrize("flag", ["--debug", "--test"])

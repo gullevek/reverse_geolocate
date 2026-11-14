@@ -621,19 +621,17 @@ def test_debug_output(run_main: Run, tmp_path: Path) -> None:
 
 # MARK: read only flags
 @pytest.mark.parametrize("flag", ["-u", "-p", "-a", "-c"])
-def test_read_only_flags_ignored_in_write_mode(run_main: Run, tmp_path: Path, lookup: FakeLookup, flag: str) -> None:
-    # NOTE: the list flags only work with -r, in write mode they are ignored (no error):
-    # all files are processed, also complete ones and ones with GPS
-    complete = write_xmp(tmp_path / "src" / "1_complete.xmp", **OSAKA)
-    with_gps = write_xmp(tmp_path / "src" / "2_gps.xmp")
-    result = run_main("-i", tmp_path / "src", flag, "-v")
-    assert result.exit_code is None
-    assert result.statuses() == {"1_complete.xmp": "SKIP", "2_gps.xmp": "UPDATED"}
-    assert location(complete) == OSAKA
-    assert location(with_gps) == LOOKUP_FIELDS
-    # no list output
-    assert "> Page " not in result.out
-    assert "XMP Files listed" not in result.out
+def test_list_flags_without_read_only_stop(
+    run_main: Run, tmp_path: Path, lookup: FakeLookup, snapshot: Snapshot, flag: str
+) -> None:
+    # the list flags only work with -r: argument error, no write run is started
+    write_xmp(tmp_path / "src" / "a.xmp")
+    before = snapshot(tmp_path / "src")
+    result = run_main("-i", tmp_path / "src", flag)
+    assert result.exit_code == "Argument error, see above"
+    assert f"The list options {flag} can only be used with -r (read only list)" in result.out
+    assert lookup.calls == []
+    assert snapshot(tmp_path / "src") == before
 
 
 # MARK: write errors
