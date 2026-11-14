@@ -10,6 +10,22 @@ import unicodedata
 cache_latin_letters: dict[str, bool] = {}
 
 
+def char_width(char: str) -> int:
+    """
+    display width of one character: 2 for double width (CJK, full width) characters,
+    0 for combining characters (eg the accent in a decomposed "u" + combining "¨"), else 1
+
+    Args:
+        char (str): one character
+
+    Returns:
+        int: display width (0, 1 or 2)
+    """
+    if unicodedata.combining(char):
+        return 0
+    return 2 if unicodedata.east_asian_width(char) in "WF" else 1
+
+
 def shorten_string(string: str, width: int, placeholder: str = "..") -> str:
     """
     shortens a string to width and attached placeholder
@@ -37,7 +53,7 @@ def shorten_string(string: str, width: int, placeholder: str = "..") -> str:
         # loop through each character
         for char in str(string):
             # set the current length if we add the character
-            cur_len += 2 if unicodedata.east_asian_width(char) in "WF" else 1
+            cur_len += char_width(char)
             # if the new length is smaller than the output length to shorten too add the char
             if cur_len <= (width - string_len_cjk(placeholder)):
                 out_string += char
@@ -51,6 +67,7 @@ def string_len_cjk(string: str) -> int:
     """
     because len on string in python counts characters but we need the width
     count for formatting, we count two for a double byte characters
+    and zero for combining characters (see char_width)
 
     Args:
         string (str): string to check length
@@ -59,7 +76,7 @@ def string_len_cjk(string: str) -> int:
         int: length including double count for double width characters
     """
     # return string len including double count for double width characters
-    return sum(1 + (unicodedata.east_asian_width(c) in "WF") for c in string)
+    return sum(char_width(char) for char in string)
 
 
 def is_latin(uchr: str) -> bool:
@@ -157,6 +174,9 @@ def shorten_path(path: str, length: int = 30, file_only: bool = False, path_only
     while cut > 0 and width + string_len_cjk(path[cut - 1]) <= available:
         cut -= 1
         width += string_len_cjk(path[cut])
+    # do not start with a combining character without its base character (eg a lone accent)
+    while cut < len(path) and unicodedata.combining(path[cut]):
+        cut += 1
     return f"{placeholder}{path[cut:]}"
 
 

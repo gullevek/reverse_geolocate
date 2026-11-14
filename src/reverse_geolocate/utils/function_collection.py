@@ -5,6 +5,7 @@ Collection of various functions
 import glob
 import os
 import re
+import unicodedata
 from argparse import Namespace
 from math import ceil
 from pathlib import Path
@@ -203,7 +204,9 @@ def output_list_width_adjust(args: Namespace) -> dict[str, int]:
 def normalize_path(path: str | Path) -> Path:
     """
     normalized path for comparing: absolute, symlinks resolved,
-    without "//", "./", "../" and trailing separators
+    without "//", "./", "../" and trailing separators,
+    Unicode NFC form: names with accents can be stored decomposed (NFD, eg "u" + combining "¨")
+    or composed (NFC, "ü"), macOS opens a file with both forms, but as strings they are different
     the path does not need to exist
 
     Args:
@@ -212,7 +215,7 @@ def normalize_path(path: str | Path) -> Path:
     Returns:
         Path: normalized absolute path
     """
-    return Path(path).resolve()
+    return Path(unicodedata.normalize("NFC", str(Path(path).resolve())))
 
 
 def normalize_exclude_paths(exclude_sources: list[str]) -> set[Path]:

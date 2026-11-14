@@ -5,6 +5,7 @@ find the data for an XMP file and merge it into the XMP data set
 
 import os
 import sqlite3
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -43,10 +44,9 @@ LIGHTROOM_QUERY = (
     "AND Adobe_images.id_local = AgHarvestedExifMetadata.image "
     "AND AgLibraryFile.folder = AgLibraryFolder.id_local "
     "AND AgLibraryFolder.rootFolder = AgLibraryRootFolder.id_local "
-    "AND AgLibraryFile.baseName = ? "
+    # the base name in both Unicode forms (NFC and NFD), see LightroomCatalog.find
+    "AND AgLibraryFile.baseName IN (?, ?)"
 )
-# strict: absolutePath + pathFromRoot = folder of the XMP file
-LIGHTROOM_QUERY_STRICT = f"{LIGHTROOM_QUERY} AND AgLibraryRootFolder.absolutePath || AgLibraryFolder.pathFromRoot = ?"
 
 LightroomStatus = Literal["found", "not_found", "many_found"]
 
@@ -132,29 +132,31 @@ class LightroomCatalog:
         """
         searches the image for an XMP file by the base name (and the folder if strict)
 
+        names with accents can be stored decomposed (NFD, eg "u" + combining "¨") or composed (NFC, "ü"),
+        in the file system and in the catalog, both forms are found
+
         Args:
             xmp_file (str): XMP file path
 
         Returns:
             LightroomResult: status and the image data
         """
-        # base file name without extension
-        params = [os.path.splitext(os.path.basename(xmp_file))[0]]
-        query = LIGHTROOM_QUERY
+        # base file name without extension, in both Unicode forms
+        # (exact matches, so the catalog index on the base name is used)
+        base_name = os.path.splitext(os.path.basename(xmp_file))[0]
+        params = [unicodedata.normalize("NFC", base_name), unicodedata.normalize("NFD", base_name)]
+        # fetchall is untyped (Any), with row_factory = sqlite3.Row it is a list of Row
+        rows = cast(list[sqlite3.Row], self.connection.execute(LIGHTROOM_QUERY, params).fetchall())
         if self.strict:
-            # Lightroom stores absolute, real paths, the folder ends with "/":
-            # realpath resolves symlinks and also collapses any "//", "./", "../" and removes
-            # a trailing "/", then exactly one "/" is added (rstrip for the root folder "/")
-            params.append(f"{os.path.realpath(os.path.dirname(xmp_file)).rstrip('/')}/")
-            query = LIGHTROOM_QUERY_STRICT
-        cursor = self.connection.execute(query, params)
-        # fetchone is untyped (Any), with row_factory = sqlite3.Row it is a Row or None
-        row = cast(sqlite3.Row | None, cursor.fetchone())
-        if row is None:
+            # the image must be in the folder of the XMP file, compared in NFC
+            # (only the few images with this base name are checked here)
+            xmp_folder = folder_key(xmp_file)
+            rows = [row for row in rows if folder_key_catalog(row) == xmp_folder]
+        if not rows:
             return LightroomResult("not_found")
-        if cursor.fetchone() is not None:
-            return LightroomResult("many_found", row)
-        return LightroomResult("found", row)
+        if len(rows) > 1:
+            return LightroomResult("many_found", rows[0])
+        return LightroomResult("found", rows[0])
 
     def close(self) -> None:
         """close the catalog"""
@@ -170,6 +172,35 @@ class LightroomCatalog:
         traceback: TracebackType | None,
     ) -> None:
         self.close()
+
+
+def folder_key(xmp_file: str) -> str:
+    """
+    folder of an XMP file as Lightroom stores it, for the strict check:
+    absolute real path (symlinks resolved, no "//", "./", "../"), exactly one "/" at the end,
+    Unicode NFC form
+
+    Args:
+        xmp_file (str): XMP file path
+
+    Returns:
+        str: folder path ending with "/"
+    """
+    # rstrip for the root folder "/"
+    return unicodedata.normalize("NFC", f"{os.path.realpath(os.path.dirname(xmp_file)).rstrip('/')}/")
+
+
+def folder_key_catalog(row: sqlite3.Row) -> str:
+    """
+    folder of a catalog image (root folder + folder from root), Unicode NFC form
+
+    Args:
+        row (sqlite3.Row): Lightroom image data
+
+    Returns:
+        str: folder path as stored in the catalog, ending with "/"
+    """
+    return unicodedata.normalize("NFC", f"{row['absolutePath']}{row['pathFromRoot']}")
 
 
 def merge_lightroom_data(data_set: dict[str, str], row: sqlite3.Row, debug: bool = False) -> dict[str, str]:
