@@ -41,6 +41,12 @@ def print_statistics(statistics: RunStatistics, read_only: bool, use_lightroom: 
     print(f"XMP Files found                  : {statistics.found:9,}")
     if read_only:
         print(f"XMP Files listed                 : {statistics.listed:9,}")
+        # damaged or unreadable files
+        if statistics.failed_files:
+            print(f"XMP Files not readable           : {statistics.failed:9,}")
+            print(f"{'-' * 44}")
+            print("Files that could not be read:")
+            print(f"{', '.join(statistics.failed_files)}")
         return
     print(f"Updated                          : {statistics.changed:9,}")
     print(f"Skipped                          : {statistics.skipped:9,}")

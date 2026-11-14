@@ -37,7 +37,7 @@ from reverse_geolocate.utils.location_cache import LocationCache
 from reverse_geolocate.utils.long_lat import long_lat_reg
 from reverse_geolocate.utils.read_only_output import create_read_only_output, matches_read_only_filter
 from reverse_geolocate.utils.statistics import RunStatistics, print_statistics
-from reverse_geolocate.utils.xmp_data import XMP_FIELDS, read_xmp_data_set, write_xmp_file
+from reverse_geolocate.utils.xmp_data import XMP_FIELDS, XmpReadError, read_xmp_file, write_xmp_file
 
 MapType = Literal["google", "openstreetmap"]
 
@@ -47,18 +47,15 @@ MapType = Literal["google", "openstreetmap"]
 ##############################################################
 
 
-def run_read_only(
-    xmp: XMPMeta, work_files: list[str], args: Namespace, statistics: RunStatistics, call_path: Path
-) -> None:
+def run_read_only(work_files: list[str], args: Namespace, statistics: RunStatistics, call_path: Path) -> None:
     """
     lists the XMP data of the work files, nothing is written and no lookup is done
 
     Args:
-        xmp (XMPMeta): XMP object, reused for all files
         work_files (list[str]): XMP files
         args (Namespace): command line arguments
-        statistics (RunStatistics): counters, listed is updated
-        call_path (Path): normalized folder the script is called from (for the debug output)
+        statistics (RunStatistics): counters, listed and failed are updated
+        call_path (Path): normalized folder the script is called from (for the output paths)
     """
     read_only_output = create_read_only_output(
         output_list_width_adjust(args),
@@ -69,9 +66,17 @@ def run_read_only(
     if not work_files:
         print(f"{'[!!!] No files found':<60}")
     for xmp_file in work_files:
+        xmp_file_print = get_display_path(xmp_file, call_path)
         if args.debug:
-            print(f"---> {xmp_file} -> {get_display_path(xmp_file, call_path)}: ", end="")
-        data_set = read_xmp_data_set(xmp, xmp_file, debug=bool(args.debug))
+            print(f"---> {xmp_file} -> {xmp_file_print}: ", end="")
+        try:
+            _, data_set = read_xmp_file(xmp_file, debug=bool(args.debug))
+        except XmpReadError as e:
+            # damaged or unreadable file: not listed, the run continues
+            print(f"(!) Could not read XMP data ({e}): {xmp_file_print}")
+            statistics.failed += 1
+            statistics.failed_files.append(xmp_file)
+            continue
         # view only if list all or if data is unset
         if matches_read_only_filter(data_set, bool(args.unset_only), bool(args.unset_gps_only)):
             read_only_output.next_line()
@@ -92,7 +97,6 @@ class WriteRun:
 
     def __init__(
         self,
-        xmp: XMPMeta,
         args: Namespace,
         map_type: MapType,
         lightroom: LightroomCatalog | None,
@@ -100,13 +104,11 @@ class WriteRun:
     ) -> None:
         """
         Args:
-            xmp (XMPMeta): XMP object, reused for all files
             args (Namespace): command line arguments
             map_type (MapType): map lookup service
             lightroom (LightroomCatalog | None): open Lightroom catalog or None
             statistics (RunStatistics): counters, updated for each file
         """
-        self.xmp = xmp
         self.args = args
         self.map_type = map_type
         self.lightroom = lightroom
@@ -124,7 +126,13 @@ class WriteRun:
             xmp_file_print (str): XMP file path for the output
         """
         args = self.args
-        data_set = read_xmp_data_set(self.xmp, xmp_file, debug=bool(args.debug))
+        try:
+            xmp, data_set = read_xmp_file(xmp_file, debug=bool(args.debug))
+        except XmpReadError as e:
+            # damaged or unreadable file: failed, the run continues
+            print(f"(!) Could not read XMP data ({e}) ", end="")
+            self.fail(xmp_file, xmp_file_print)
+            return
         # original data for checking if something changed
         data_set_original = data_set.copy()
         data_set, lightroom_data_ok = self.merge_lightroom(xmp_file, data_set)
@@ -156,7 +164,7 @@ class WriteRun:
             print(f"Lightroom data use: {self.lightroom is not None}, Lightroom data ok: {lightroom_data_ok}")
 
         # all changed values: from Lightroom (also GPS) and from the map lookup
-        written_keys = self.set_changed_values(data_set, data_set_original)
+        written_keys = self.set_changed_values(xmp, data_set, data_set_original)
         write_file = bool(written_keys)
         # only count new map lookups, cache hits are counted separately
         if map_keys and write_file and not from_cache:
@@ -166,20 +174,30 @@ class WriteRun:
 
         if write_file:
             if not args.test:
-                write_xmp_file(self.xmp, xmp_file, backup=not args.no_xmp_backup, args=args)
+                write_xmp_file(xmp, xmp_file, backup=not args.no_xmp_backup, args=args)
             else:
                 print(f"{xmp_file_print}: [TEST] Would write {data_set} {xmp_file}")
             print(f"{xmp_file_print}: [UPDATED FROM CACHE]" if from_cache else f"{xmp_file_print}: [UPDATED]")
             self.statistics.changed += 1
         # failed only if the lookup failed and there is nothing else (Lightroom) to write
         elif lookup_failed:
-            print(f"{xmp_file_print}: [FAILED]")
-            self.statistics.failed += 1
-            self.statistics.failed_files.append(xmp_file)
+            self.fail(xmp_file, xmp_file_print)
         else:
             if args.verbose >= 1:
                 print(f"{xmp_file_print}: [SKIP]")
             self.statistics.skipped += 1
+
+    def fail(self, xmp_file: str, xmp_file_print: str) -> None:
+        """
+        prints the failed status, counts the file as failed and keeps it for the list at the end
+
+        Args:
+            xmp_file (str): XMP file path
+            xmp_file_print (str): XMP file path for the output
+        """
+        print(f"{xmp_file_print}: [FAILED]")
+        self.statistics.failed += 1
+        self.statistics.failed_files.append(xmp_file)
 
     def merge_lightroom(self, xmp_file: str, data_set: dict[str, str]) -> tuple[dict[str, str], bool]:
         """
@@ -261,11 +279,12 @@ class WriteRun:
                 map_keys.add(key)
         return map_keys
 
-    def set_changed_values(self, data_set: dict[str, str], data_set_original: dict[str, str]) -> set[str]:
+    def set_changed_values(self, xmp: XMPMeta, data_set: dict[str, str], data_set_original: dict[str, str]) -> set[str]:
         """
         sets all changed values (that pass the overwrite check) in the XMP object
 
         Args:
+            xmp (XMPMeta): XMP object of the file
             data_set (dict[str, str]): new data set
             data_set_original (dict[str, str]): data set as read from the XMP file
 
@@ -277,7 +296,7 @@ class WriteRun:
             if value != data_set_original[key] and check_overwrite(
                 data_set_original[key], key, self.args.field_controls, self.args
             ):
-                self.xmp.set_property(XMP_FIELDS[key], key, value)
+                xmp.set_property(XMP_FIELDS[key], key, value)
                 written_keys.add(key)
         return written_keys
 
@@ -301,7 +320,6 @@ def has_valid_gps(data_set: dict[str, str]) -> bool:
 
 
 def run_write(
-    xmp: XMPMeta,
     work_files: list[str],
     args: Namespace,
     map_type: MapType,
@@ -313,7 +331,6 @@ def run_write(
     sets the location data in all work files (see WriteRun)
 
     Args:
-        xmp (XMPMeta): XMP object, reused for all files
         work_files (list[str]): XMP files
         args (Namespace): command line arguments
         map_type (MapType): map lookup service
@@ -321,7 +338,7 @@ def run_write(
         statistics (RunStatistics): counters
         call_path (Path): normalized folder the script is called from, for the output paths
     """
-    write_run = WriteRun(xmp, args, map_type, lightroom, statistics)
+    write_run = WriteRun(args, map_type, lightroom, statistics)
     for xmp_file in work_files:
         # path for the output: relative to the call folder, or as given if outside of it
         xmp_file_print = get_display_path(xmp_file, call_path)
@@ -364,9 +381,10 @@ def main():
             print(f"### USE Lightroom {lightroom.database}")
 
     try:
-        # MARK: load XMPMeta data
+        # MARK: check Exempi
+        # each file is read into its own XMP object, check here once that Exempi can be loaded
         try:
-            xmp = XMPMeta()
+            XMPMeta()
         except ExempiLoadError as e:
             print(f"(!) Exempi library not found or not working (must be installed separated): {e}")
             sys.exit(1)
@@ -385,9 +403,9 @@ def main():
         # the folder the script is called from, file paths inside it are printed relative to it
         call_path = normalize_path(os.getcwd())
         if args.read_only:
-            run_read_only(xmp, work_files, args, statistics, call_path)
+            run_read_only(work_files, args, statistics, call_path)
         else:
-            run_write(xmp, work_files, args, map_type, lightroom, statistics, call_path)
+            run_write(work_files, args, map_type, lightroom, statistics, call_path)
     finally:
         # MARK: close Lightroom
         if lightroom is not None:

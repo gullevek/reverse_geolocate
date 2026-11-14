@@ -8,7 +8,7 @@ from argparse import Namespace
 from shutil import copyfile
 
 # Note XMPFiles does not work with sidecar files, need to read via XMPMeta
-from libxmp import XMPMeta, consts
+from libxmp import XMPError, XMPMeta, consts
 
 from reverse_geolocate.utils.function_collection import get_backup_file_counter
 
@@ -26,28 +26,45 @@ XMP_FIELDS = {
 }
 
 
-def read_xmp_data_set(xmp: XMPMeta, xmp_file: str, debug: bool = False) -> dict[str, str]:
+class XmpReadError(Exception):
+    """an XMP file could not be read: not readable, not UTF-8 or no valid XMP (damaged)"""
+
+
+def read_xmp_file(xmp_file: str, debug: bool = False) -> tuple[XMPMeta, dict[str, str]]:
     """
-    reads an XMP file into the XMP object and returns the GPS and location fields
+    reads an XMP file into a new XMP object and returns it with the GPS and location fields
     (the XMP object keeps the file data, for writing it back)
+    a new object for each file: after a parse error (damaged file) an XMP object can not be used anymore,
+    also no data of a previous file can be carried over
 
     Args:
-        xmp (XMPMeta): XMP object, reused for all files
         xmp_file (str): XMP file path
         debug (bool, optional): print the read fields. Defaults to False.
 
+    Raises:
+        XmpReadError: the file can not be read or is no valid XMP
+
     Returns:
-        dict[str, str]: data set with all XMP_FIELDS keys, missing fields are empty
+        tuple[XMPMeta, dict[str, str]]: XMP object with the file data,
+            data set with all XMP_FIELDS keys, missing fields are empty
     """
-    with open(xmp_file, "r", encoding="UTF-8") as fptr:
-        xmp.parse_from_str(fptr.read())
+    xmp = XMPMeta()
+    try:
+        with open(xmp_file, "r", encoding="UTF-8") as fptr:
+            xmp.parse_from_str(fptr.read())
+    except OSError as e:
+        raise XmpReadError(f"file not readable: {e.strerror}") from e
+    except UnicodeDecodeError as e:
+        raise XmpReadError("not a text file (UTF-8)") from e
+    except XMPError as e:
+        raise XmpReadError(f"no valid XMP: {e}") from e
     data_set: dict[str, str] = {}
     for key, namespace in XMP_FIELDS.items():
         # need to check if the property exists or the exempi routine will fail
         data_set[key] = xmp.get_property(namespace, key) if xmp.does_property_exist(namespace, key) else ""
         if debug:
             print(f"### [{xmp_file}] => XMP: {namespace}:{key} => {data_set[key]}")
-    return data_set
+    return xmp, data_set
 
 
 def write_xmp_file(xmp: XMPMeta, xmp_file: str, backup: bool, args: Namespace) -> None:
