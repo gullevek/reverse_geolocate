@@ -1,6 +1,6 @@
 [project]
 name = "reverse-geolocate"
-version = "2.0.0-rc-3"
+version = "2.0.0rc4"
 description = "Reverse geolocate XMP sidecar files: fill in the location names from GPS data, Lightroom, Google Maps or OpenStreetMap"
 readme = "README.md"
 requires-python = ">=3.11"
