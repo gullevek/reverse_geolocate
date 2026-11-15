@@ -4,6 +4,7 @@ Setups and parses the arguments
 
 import argparse
 import re
+from importlib.metadata import PackageNotFoundError, version
 
 from reverse_geolocate.setup.argparse.distance_values import DistanceValues
 from reverse_geolocate.setup.argparse.readable_dir import ReadableDir
@@ -37,6 +38,10 @@ class ArgumentSetup:
             epilog="Sample: (todo)",
         )
         self.args: argparse.Namespace | None = None
+        try:
+            self.__version__ = version("reverse-geolocate")  # name from [project] name
+        except PackageNotFoundError:  # not installed (e.g. running from source without uv sync)
+            self.__version__ = "unknown"
         # register the options once, so get_args() can be called more than once
         self.__arguments_set()
 
@@ -255,6 +260,13 @@ class ArgumentSetup:
             action="store_true",
             dest="test",
             help="Do not write data back to file",
+        )
+        # version flag
+        self.parser.add_argument(
+            "--version",
+            action="version",
+            version=f"%(prog)s {self.__version__}",
+            help="Show program version and exit",
         )
 
     def __arguments_check(self):
