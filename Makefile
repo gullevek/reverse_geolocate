@@ -41,6 +41,9 @@ test:
 
 # full test suite on the minimum supported Python (from requires-python in pyproject.toml)
 MIN_PYTHON = $(shell sed -n 's/^requires-python = ">=\([0-9.]*\)".*/\1/p' pyproject.toml)
+# print the minimum supported Python version (used by build-publish.sh)
+min-python:
+	@echo "$(MIN_PYTHON)"
 test-min:
 	@if [ -z "$(MIN_PYTHON)" ]; then echo "No minimum Python found in pyproject.toml (requires-python)"; exit 1; fi
 	uv run --isolated --python $(MIN_PYTHON) pytest -p no:cacheprovider
@@ -64,4 +67,4 @@ test-container-build:
 test-container: test-container-build
 	$(CONTAINER) run --rm $(CONTAINER_IMAGE) $(TEST_ARGS)
 
-.PHONY: default format-check format lint lint-all lint-ruff lint-ty lint-pyright lint-fix lint-fix-ruff lint-fix-ty test test-min test-container-build test-container
+.PHONY: default format-check format lint lint-all lint-ruff lint-ty lint-pyright lint-fix lint-fix-ruff lint-fix-ty test test-min min-python test-container-build test-container

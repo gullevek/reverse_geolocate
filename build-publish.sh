@@ -177,9 +177,12 @@ step "Format check"
 make format-check
 step "Lint"
 make lint-all
-step "Test"
+# tests on the development Python (.python-version) and on the minimum supported Python (requires-python)
+dev_python=$(uv run --no-sync python -c 'import platform; print(platform.python_version())')
+min_python=$(make -s min-python)
+step "Test on Python ${dev_python} (development version)"
 make test
-step "Test on the minimum Python version"
+step "Test on Python ${min_python} (minimum supported version)"
 make test-min
 
 # MARK: build
