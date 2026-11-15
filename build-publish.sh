@@ -21,18 +21,44 @@ Usage: $0 <new_version> [--execute] [--index <name>]
   -h, --help      show this help
 EOF
 }
+# colors only for a terminal, and not if NO_COLOR is set (https://no-color.org)
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
+	color_red=$'\033[31m'
+	color_yellow=$'\033[33m'
+	color_reset=$'\033[0m'
+else
+	color_red=""
+	color_yellow=""
+	color_reset=""
+fi
+# error: red, stops the script
 error() {
-	echo "[!] $*" >&2
+	echo "${color_red}[!] $*${color_reset}" >&2
 	exit 1
 }
-step() {
-	echo ""
-	echo "==> $*"
+# warning: yellow, the script continues
+warn() {
+	echo "${color_yellow}[!] $*${color_reset}" >&2
 }
+# step title, prefixed with [DRY RUN] if this is not an actual release
+execute=0
+step() {
+	local prefix=""
+	if [ "$execute" -eq 0 ]; then
+		prefix="[DRY RUN] "
+	fi
+	echo ""
+	echo "${prefix}==> $*"
+}
+# any other failing command (set -e): show it in red, the script stops
+# (error() exits directly and does not trigger this)
+on_error() {
+	echo "${color_red}[!] Failed (exit $1) in line $2: $3${color_reset}" >&2
+}
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
 
 # MARK: arguments
 input_version=""
-execute=0
 index="pypi"
 show_current=0
 while [ "$#" -gt 0 ]; do
@@ -135,13 +161,20 @@ if [ -n "$(git status --porcelain)" ]; then
 	git status --short
 	error "Working tree is not clean, commit or stash all changes first"
 fi
-git fetch --quiet --tags "$remote"
+# --no-prune: with fetch.prune/fetch.pruneTags in the git config a fetch deletes local tags
+# that are not on the remote, then an existing local tag would not be found
+git fetch --quiet --tags --no-prune "$remote" || error "Fetch from '$remote' failed"
 # not behind the remote branch (ahead is ok, it is pushed with the release)
 if [ "$(git rev-list --count "HEAD..@{upstream}")" -ne 0 ]; then
 	error "Branch '$branch' is behind '$remote', pull first"
 fi
+# an existing tag (local or fetched from the remote) is not created again
+# it points to an older commit, without the version change of this release
+tag_exists=0
 if git rev-parse --quiet --verify "refs/tags/${tag}" >/dev/null; then
-	error "Tag $tag already exists"
+	tag_exists=1
+	warn "Tag $tag already exists, it is not created again: $(git log -1 --format='%h %s' "$tag")"
+	warn "The tag does not include the version change of this release commit"
 fi
 echo "Branch: $branch, remote: $remote"
 
@@ -157,7 +190,7 @@ cleanup() {
 	fi
 	if [ "$version_set" -eq 1 ] && [ "$released" -eq 0 ]; then
 		if [ "$status" -ne 0 ]; then
-			echo "[!] Failed, restoring pyproject.toml and uv.lock" >&2
+			echo "${color_red}[!] Failed, restoring pyproject.toml and uv.lock${color_reset}" >&2
 		else
 			echo "Restoring pyproject.toml and uv.lock"
 		fi
@@ -203,17 +236,21 @@ echo "Build ok: $installed_version"
 
 # MARK: dry run
 if [ "$execute" -eq 0 ]; then
-	step "[DRY RUN] Push check: $branch to $remote"
-	git push --dry-run "$remote" "$branch"
-	step "[DRY RUN] Publish check: $index"
-	uv publish --dry-run --index "$index" "$wheel" "$sdist" </dev/null
-	step "[DRY RUN] Skipped"
+	step "Push check: $branch to $remote"
+	git push --dry-run "$remote" "$branch" || error "Push check to '$remote' failed"
+	step "Publish check: $index"
+	uv publish --dry-run --index "$index" "$wheel" "$sdist" </dev/null || error "Publish check for '$index' failed"
+	step "Skipped"
 	echo "git commit -m \"Release ${new_version}\" (pyproject.toml, uv.lock)"
-	echo "git tag -a $tag"
+	if [ "$tag_exists" -eq 1 ]; then
+		echo "(tag $tag already exists, not created)"
+	else
+		echo "git tag -a $tag"
+	fi
 	echo "git push $remote $branch $tag"
 	echo "uv publish --index $index ${PACKAGE_FILE_NAME}-${new_version}-py3-none-any.whl ${PACKAGE_FILE_NAME}-${new_version}.tar.gz"
 	echo "(the publish check does not verify the credentials)"
-	step "[DRY RUN] All checks passed, nothing was changed. Release with:"
+	step "All checks passed, nothing was changed. Release with:"
 	echo "$0 $input_version --execute --index $index"
 	exit 0
 fi
@@ -226,10 +263,16 @@ wheel="dist/$(basename "$wheel")"
 sdist="dist/$(basename "$sdist")"
 
 step "Commit and tag $tag"
-git add pyproject.toml uv.lock
-git commit --quiet -m "Release ${new_version}"
-git tag -a "$tag" -m "Release ${new_version}"
+git add pyproject.toml uv.lock || error "Adding pyproject.toml and uv.lock failed"
+git commit --quiet -m "Release ${new_version}" || error "Commit failed"
+# from here on the version change is committed, it must not be restored anymore
 released=1
+if [ "$tag_exists" -eq 1 ]; then
+	warn "Tag $tag already exists, not created"
+else
+	git tag -a "$tag" -m "Release ${new_version}" ||
+		error "Tagging failed, the commit 'Release ${new_version}' is local. Tag: git tag -a $tag -m \"Release ${new_version}\", push: git push $remote $branch $tag, then publish: uv publish --index $index $wheel $sdist"
+fi
 
 step "Push $branch and $tag to $remote"
 git push "$remote" "$branch" "refs/tags/${tag}" ||
