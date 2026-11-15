@@ -11,11 +11,13 @@ PACKAGE_FILE_NAME="reverse_geolocate"
 usage() {
 	cat <<EOF
 Usage: $0 <new_version> [--execute] [--index <name>]
+       $0 --current
 
   new_version     semantic version, e.g. 2.0.0, 2.1.0-rc.1, 2.1.0-beta.2
                   (pre-releases must be alpha, beta or rc, they are converted to the Python form: 2.1.0rc1)
   --execute       do the actual release, without it this is a dry run (nothing is changed)
   --index <name>  uv index from pyproject.toml to publish to: pypi (default) or test-pypi
+  -c, --current   show the current version from pyproject.toml and exit
   -h, --help      show this help
 EOF
 }
@@ -32,10 +34,14 @@ step() {
 input_version=""
 execute=0
 index="pypi"
+show_current=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 		--execute)
 			execute=1
+			;;
+		-c | --current)
+			show_current=1
 			;;
 		--index)
 			[ "$#" -ge 2 ] || error "--index needs a value"
@@ -60,6 +66,22 @@ while [ "$#" -gt 0 ]; do
 	esac
 	shift
 done
+
+# always run from the project folder
+cd "$(dirname "$0")"
+
+# MARK: current version
+if [ "$show_current" -eq 1 ]; then
+	if [ -n "$input_version" ] || [ "$execute" -eq 1 ]; then
+		error "--current can not be used with a new version or --execute"
+	fi
+	for tool in uv jq; do
+		command -v "$tool" >/dev/null 2>&1 || error "'$tool' not found"
+	done
+	uv version --output-format json | jq -r '.version'
+	exit 0
+fi
+
 if [ -z "$input_version" ]; then
 	usage >&2
 	exit 1
@@ -70,9 +92,6 @@ if [ "$execute" -eq 1 ]; then
 else
 	mode="DRY RUN"
 fi
-
-# always run from the project folder
-cd "$(dirname "$0")"
 
 echo "*** ${mode} ***"
 
