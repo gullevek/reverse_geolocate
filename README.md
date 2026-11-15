@@ -12,6 +12,14 @@ Everything is setup with uv, to install the tool itself
 uv tool install reverse-geolocate
 ```
 
+<!-- MIN-PY: keep the Python version in sync with requires-python in pyproject.toml -->
+It can also be installed with pipx, this needs Python 3.11 or newer. If the default Python is older, select a newer installed version with `--python`, otherwise pip falls back to an older release of this tool that still supports that Python version
+
+```sh
+pipx install reverse-geolocate
+pipx install --python python3.12 reverse-geolocate
+```
+
 XMP Toolkit also needs the [Exempi Library](http://libopenraw.freedesktop.org/wiki/Exempi). This one can be install via brew or macports directly.
 See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthedocs.io/)
 

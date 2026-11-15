@@ -5,7 +5,10 @@ distance value reading and check
 import argparse
 import re
 from collections.abc import Sequence
-from typing import Any, override
+from typing import Any
+
+# MIN-PY 3.12: import override from typing
+from typing_extensions import override
 
 
 class DistanceValues(argparse.Action):

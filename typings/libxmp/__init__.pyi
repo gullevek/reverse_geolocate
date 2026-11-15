@@ -8,7 +8,10 @@ Signatures follow libxmp/core.py of the 2.1.0 release.
 
 import datetime
 from collections.abc import Iterator
-from typing import Any, override
+from typing import Any
+
+# MIN-PY 3.12: import override from typing
+from typing_extensions import override
 
 from . import consts as consts
 

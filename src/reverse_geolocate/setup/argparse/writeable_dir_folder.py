@@ -5,7 +5,10 @@ check if dir is writable
 import argparse
 import os
 from collections.abc import Sequence
-from typing import Any, override
+from typing import Any
+
+# MIN-PY 3.12: import override from typing
+from typing_extensions import override
 
 
 class WritableDirFolder(argparse.Action):

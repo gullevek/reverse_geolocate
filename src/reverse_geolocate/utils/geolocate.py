@@ -67,7 +67,7 @@ def reverse_geolocate_init(longitude: float, latitude: float) -> dict[str, str]:
     # latitude must be in -90 to 90, longitude in -180 to 180
     try:
         valid = -90 <= float(latitude) <= 90 and -180 <= float(longitude) <= 180
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         valid = False
     if not valid:
         geolocation["status"] = "ERROR"

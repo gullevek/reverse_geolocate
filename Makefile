@@ -37,6 +37,12 @@ lint-fix-ty:
 test:
 	uv run pytest
 
+# full test suite on the minimum supported Python (from requires-python in pyproject.toml)
+MIN_PYTHON = $(shell sed -n 's/^requires-python = ">=\([0-9.]*\)".*/\1/p' pyproject.toml)
+test-min:
+	@if [ -z "$(MIN_PYTHON)" ]; then echo "No minimum Python found in pyproject.toml (requires-python)"; exit 1; fi
+	uv run --isolated --python $(MIN_PYTHON) pytest -p no:cacheprovider
+
 # MARK: test container
 # full test suite in a container with the Exempi library (needed for the integration tests)
 # docker or podman, the first one found, override with: make test-container CONTAINER=podman
@@ -56,4 +62,4 @@ test-container-build:
 test-container: test-container-build
 	$(CONTAINER) run --rm $(CONTAINER_IMAGE) $(TEST_ARGS)
 
-.PHONY: default format-check format lint lint-all lint-ruff lint-ty lint-pyright lint-fix lint-fix-ruff lint-fix-ty test test-container-build test-container
+.PHONY: default format-check format lint lint-all lint-ruff lint-ty lint-pyright lint-fix lint-fix-ruff lint-fix-ty test test-min test-container-build test-container

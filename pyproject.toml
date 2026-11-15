@@ -3,10 +3,12 @@ name = "reverse-geolocate"
 version = "2.0.0-rc-3"
 description = "Reverse Geolcate script"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "python-xmp-toolkit>=2.1.0",
     "requests>=2.32.5",
+    # MIN-PY 3.12: remove, typing.override is used then
+    "typing-extensions>=4.4.0",
 ]
 license = "GPL-3.0-or-later"
 license-files = ["LICEN[CS]E*"]
@@ -42,6 +44,9 @@ dev = [
 # MARK: Python linting
 [tool.pyright]
 typeCheckingMode = "strict"
+# minimum supported Python, same as requires-python (ruff and ty read requires-python)
+# MIN-PY: keep in sync with requires-python
+pythonVersion = "3.11"
 # local type stubs (libxmp ships none)
 stubPath = "typings"
 reportMissingImports = "information"
@@ -67,6 +72,10 @@ preview = true
 enable-unstable-feature = ["string_processing", "hug_parens_with_braces_and_square_brackets"]
 [tool.ruff]
 line-length = 120
+[tool.ruff.lint]
+# UP035: imports that can come from the standard library for the minimum Python (requires-python),
+# e.g. typing_extensions.override -> typing.override once requires-python is >=3.12
+extend-select = ["UP035"]
 [tool.ruff.lint.isort]
 # https://docs.astral.sh/ruff/settings/#lint_isort_force-single-line
 # force-single-line = true

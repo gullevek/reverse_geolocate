@@ -160,6 +160,8 @@ step "Lint"
 make lint-all
 step "Test"
 make test
+step "Test on the minimum Python version"
+make test-min
 
 # MARK: build
 step "Build"

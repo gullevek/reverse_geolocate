@@ -4,10 +4,13 @@ the network is never used, requests.get is replaced by a fake that records the c
 """
 
 from argparse import Namespace
-from typing import Any, override
+from typing import Any
 
 import pytest
 import requests
+
+# MIN-PY 3.12: import override from typing
+from typing_extensions import override
 
 from reverse_geolocate.utils import geolocate
 from reverse_geolocate.utils.geolocate import (
