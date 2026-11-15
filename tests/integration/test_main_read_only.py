@@ -91,9 +91,24 @@ def test_damaged_file_not_listed_and_continues(run_main: Run, tmp_path: Path) ->
     assert result.stat("XMP Files found") == 4
     assert result.stat("XMP Files listed") == 2
     assert result.stat("XMP Files not readable") == 2
-    assert result.lines[result.lines.index("Files that could not be read:") + 1] == (
-        f"{src / '2_broken.xmp'}, {src / '3_binary.xmp'}"
-    )
+    start = result.lines.index("Files that could not be read:") + 1
+    # one file per line (outside of the call folder: the path as given)
+    assert result.lines[start : start + 2] == [str(src / "2_broken.xmp"), str(src / "3_binary.xmp")]
+
+
+def test_damaged_file_display_path(run_main: Run, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = tmp_path / "photos"
+    write_xmp(src / "1.xmp")
+    (src / "2_broken.xmp").write_text("just text", encoding="UTF-8")
+    monkeypatch.chdir(tmp_path)
+    result = run_main("-r", "-i", src)
+    # message and failed list use the display path (relative to the call folder)
+    messages = [line for line in result.lines if line.startswith("(!) Could not read XMP data")]
+    assert len(messages) == 1
+    assert messages[0].endswith(": photos/2_broken.xmp")
+    assert result.lines[result.lines.index("Files that could not be read:") + 1] == "photos/2_broken.xmp"
+    # the list shows only the file name
+    assert [row[0] for row in result.table_rows()] == ["1.xmp"]
 
 
 def test_no_unreadable_statistics_without_errors(run_main: Run, sample_folder: Path) -> None:

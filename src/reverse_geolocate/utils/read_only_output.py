@@ -2,14 +2,19 @@
 read only output for listing with header and page numbers
 """
 
+from argparse import Namespace
 from math import ceil
+from pathlib import Path
 from typing import Any
 
+from reverse_geolocate.utils.function_collection import get_display_path, output_list_width_adjust
 from reverse_geolocate.utils.long_lat import (
     convert_dms_to_lat,
     convert_dms_to_long,
 )
+from reverse_geolocate.utils.statistics import RunStatistics
 from reverse_geolocate.utils.string_helpers import format_len, shorten_path, shorten_string
+from reverse_geolocate.utils.xmp_data import XmpReadError, read_xmp_file
 
 
 # MARK: Read only output
@@ -240,3 +245,48 @@ def matches_read_only_filter(data_set: dict[str, str], unset_only: bool, unset_g
     return (unset_only and "" in data_set.values()) or (
         unset_gps_only and (not data_set["GPSLatitude"] or not data_set["GPSLongitude"])
     )
+
+
+##############################################################
+# MARK: READ ONLY RUN
+##############################################################
+
+
+def run_read_only(work_files: list[str], args: Namespace, statistics: RunStatistics, call_path: Path) -> None:
+    """
+    lists the XMP data of the work files, nothing is written and no lookup is done
+
+    Args:
+        work_files (list[str]): XMP files
+        args (Namespace): command line arguments
+        statistics (RunStatistics): counters, listed and failed are updated
+        call_path (Path): normalized folder the script is called from (for the output paths)
+    """
+    read_only_output = create_read_only_output(
+        output_list_width_adjust(args),
+        len(work_files),
+        filtered=bool(args.unset_only or args.unset_gps_only),
+    )
+    read_only_output.print_header()
+    if not work_files:
+        print(f"{'[!!!] No files found':<60}")
+    for xmp_file in work_files:
+        xmp_file_print = get_display_path(xmp_file, call_path)
+        if args.debug:
+            print(f"---> {xmp_file} -> {xmp_file_print}: ", end="")
+        try:
+            _, data_set = read_xmp_file(xmp_file, debug=bool(args.debug))
+        except XmpReadError as e:
+            # damaged or unreadable file: not listed, the run continues
+            print(f"(!) Could not read XMP data ({e}): {xmp_file_print}")
+            statistics.failed += 1
+            statistics.failed_files.append(xmp_file_print)
+            continue
+        # view only if list all or if data is unset
+        if matches_read_only_filter(data_set, bool(args.unset_only), bool(args.unset_gps_only)):
+            read_only_output.next_line()
+            read_only_output.print_line(xmp_file_print, data_set)
+            statistics.listed += 1
+
+
+# __END__

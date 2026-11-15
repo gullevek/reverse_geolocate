@@ -71,10 +71,11 @@ def test_lightroom_only_in_write_mode(capsys: pytest.CaptureFixture[str]) -> Non
 def test_failed_files(capsys: pytest.CaptureFixture[str]) -> None:
     statistics = RunStatistics(failed=2, failed_files=["/a/1.xmp", "/b/2.xmp"])
     print_statistics(statistics, read_only=False, use_lightroom=False)
-    assert capsys.readouterr().out.splitlines()[-3:] == [
+    assert capsys.readouterr().out.splitlines()[-4:] == [
         "-" * 44,
         "Files that failed to update:",
-        "/a/1.xmp, /b/2.xmp",
+        "/a/1.xmp",
+        "/b/2.xmp",
     ]
 
 
@@ -88,7 +89,8 @@ def test_read_only_unreadable_files(capsys: pytest.CaptureFixture[str]) -> None:
         "XMP Files not readable           :         2",
         "-" * 44,
         "Files that could not be read:",
-        "/a/1.xmp, /b/2.xmp",
+        "/a/1.xmp",
+        "/b/2.xmp",
     ]
 
 

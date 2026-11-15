@@ -18,14 +18,12 @@ See more information for [Python XMP Tool kit](http://python-xmp-toolkit.readthe
 ## Command line arguments
 
 ```sh
-reverse-geolocate [-h] -i
-    [XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]]
-    [-x [EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]]
-    [-l LIGHTROOM FOLDER] [-s]
-    [-f <overwrite, location, city, state, country, countrycode>]
-    [-d [FUZZY DISTANCE]] [-g GOOGLE API KEY] [-o]
-    [-e EMIL ADDRESS] [-w] [-r] [-u] [-a] [-c] [-n]
-    [-v] [--debug] [--test]
+usage: reverse-geolocate [-h] -i XMP SOURCE FOLDER [XMP SOURCE FOLDER ...]
+                         [-x EXCLUDE XMP SOURCE FOLDER [EXCLUDE XMP SOURCE FOLDER ...]]
+                         [-l LIGHTROOM FOLDER] [-s]
+                         [-f <overwrite, location, city, state, country, countrycode>]
+                         [-d [FUZZY DISTANCE]] [-g GOOGLE API KEY] [-o] [-e EMAIL ADDRESS] [-w] [-r] [-u]
+                         [-p] [-a] [-c] [-n] [-v] [--debug] [--test] [--version]
 ```
 
 ### Arguments
@@ -43,13 +41,15 @@ Argument | Argument Value | Description
 -e, --email | email address | For OpenStreetMap with a large number of access
 -g, --google | Google Maps API Key | If available, to avoid the access limitations to the reverse location lookup
 -r, --read-only | | Read only data from the XMP files and print them out. No LR DB connection is done or any map lookups
--u, --unset-only | | Only list XMP files with missing data
--a, --no-autoadjust | | Do not try to auto adjust column width to terminal column width
--c, --compact | | Do extra compact view
+-u, --unset-only | | Only list XMP files with missing data (only with -r)
+-p, --unset-gps-only | | Only list unset XMP files for GPS fields (only with -r)
+-a, --no-autoadjust | | Do not try to auto adjust column width to terminal column width (only with -r)
+-c, --compact | | Do extra compact view (only with -r)
 -w, --write-settings | | Write the Google API key or the OpenStreetMap email into the settings file
--v, --verbose | | More verbose output. Currently not used
+-v, --verbose | | -v for show skipped entries, -vv with --debug to show verbose repsonse for queries
 --debug | | Full detailed debug output. Will print out alot of data
 --test | | Does not write any changed back to the XMP sidecar file. For testing purposes
+--version | | Show current version
 
 The script will created a backup of the current sidecar file named `<original name>.BK.xmp` in the same location as the original file.
 

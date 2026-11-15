@@ -544,8 +544,9 @@ def test_failed_and_updated_counts(run_main: Run, tmp_path: Path) -> None:
     assert result.stat("Updated") == 1
     assert result.stat("Skipped") == 1
     assert result.stat("Failed reverse GeoLocate") == 2
-    failed_line = result.lines[result.lines.index("Files that failed to update:") + 1]
-    assert failed_line == f"{tmp_path / 'src' / '2.xmp'}, {tmp_path / 'src' / '4.xmp'}"
+    start = result.lines.index("Files that failed to update:") + 1
+    # one file per line
+    assert result.lines[start : start + 2] == [str(tmp_path / "src" / "2.xmp"), str(tmp_path / "src" / "4.xmp")]
 
 
 def test_no_failed_list_without_failures(run_main: Run, tmp_path: Path) -> None:
@@ -606,8 +607,8 @@ def test_display_path_failed_and_skipped(run_main: Run, tmp_path: Path, monkeypa
     monkeypatch.chdir(tmp_path)
     result = run_main("-i", tmp_path / "photos", "-v")
     assert status_paths(result) == ["(!) No valid GPS data for geo location lookup photos/1.xmp", "photos/2.xmp"]
-    # the failed list at the end keeps the full path
-    assert result.lines[result.lines.index("Files that failed to update:") + 1] == str(tmp_path / "photos" / "1.xmp")
+    # the failed list at the end uses the display path (relative to the call folder)
+    assert result.lines[result.lines.index("Files that failed to update:") + 1] == "photos/1.xmp"
 
 
 def test_debug_output(run_main: Run, tmp_path: Path) -> None:

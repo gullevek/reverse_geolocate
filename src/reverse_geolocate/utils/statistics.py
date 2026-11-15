@@ -46,7 +46,7 @@ def print_statistics(statistics: RunStatistics, read_only: bool, use_lightroom: 
             print(f"XMP Files not readable           : {statistics.failed:9,}")
             print(f"{'-' * 44}")
             print("Files that could not be read:")
-            print(f"{', '.join(statistics.failed_files)}")
+            print("\n".join(statistics.failed_files))
         return
     print(f"Updated                          : {statistics.changed:9,}")
     print(f"Skipped                          : {statistics.skipped:9,}")
@@ -62,7 +62,7 @@ def print_statistics(statistics: RunStatistics, read_only: bool, use_lightroom: 
     if statistics.failed_files:
         print(f"{'-' * 44}")
         print("Files that failed to update:")
-        print(f"{', '.join(statistics.failed_files)}")
+        print("\n".join(statistics.failed_files))
 
 
 # __END__

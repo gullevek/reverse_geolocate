@@ -56,10 +56,10 @@ def isolated_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 @pytest.fixture(autouse=True)
 def lookup(monkeypatch: pytest.MonkeyPatch) -> FakeLookup:
     # imported here, the script module needs Exempi
-    from reverse_geolocate import reverse_geolocate as reverse_geolocate_module
+    from reverse_geolocate.utils import write_run as write_run_module
 
     fake = FakeLookup()
-    monkeypatch.setattr(reverse_geolocate_module, "reverse_geolocate", fake)
+    monkeypatch.setattr(write_run_module, "reverse_geolocate", fake)
     return fake
 
 
