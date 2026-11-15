@@ -1,6 +1,6 @@
 [project]
 name = "reverse-geolocate"
-version = "2.0.0-rc-2"
+version = "2.0.0-rc-3"
 description = "Reverse Geolcate script"
 readme = "README.md"
 requires-python = ">=3.14"

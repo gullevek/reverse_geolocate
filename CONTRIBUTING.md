@@ -1,5 +1,27 @@
 # Guidlines
 
-Code has to pass flake8 coding guidlines
+Code has to pass the format, lint and all tests
 
-[http://flake8.pycqa.org/en/latest/](http://flake8.pycqa.org/en/latest/)
+Format code:
+
+```sh
+make format
+```
+
+Lint the code
+
+```sh
+make lint
+```
+
+and if there are problems, fix them
+
+```sh
+make lint-fix
+```
+
+Run all the tests
+
+```sh
+make test
+```
