@@ -1,5 +1,7 @@
 default:
 
+all: format lint test
+
 # Makefile
 format-check:
 	uv run ruff format --check
