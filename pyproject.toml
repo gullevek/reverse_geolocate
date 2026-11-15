@@ -1,7 +1,7 @@
 [project]
 name = "reverse-geolocate"
 version = "2.0.0-rc-3"
-description = "Reverse Geolcate script"
+description = "Reverse geolocate XMP sidecar files: fill in the location names from GPS data, Lightroom, Google Maps or OpenStreetMap"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -12,6 +12,42 @@ dependencies = [
 ]
 license = "GPL-3.0-or-later"
 license-files = ["LICEN[CS]E*"]
+authors = [{ name = "Clemens Schwaighofer", email = "gullevek@gullevek.org" }]
+keywords = [
+    "xmp",
+    "sidecar",
+    "reverse-geocoding",
+    "geolocation",
+    "gps",
+    "lightroom",
+    "openstreetmap",
+    "google-maps",
+    "photography",
+]
+# https://pypi.org/classifiers/
+# no license classifier: the license is set with the SPDX expression in license
+classifiers = [
+    # set to "5 - Production/Stable" for a final release
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    # MIN-PY: one entry for each supported version, from requires-python up
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+[project.urls]
+Homepage = "https://codeberg.org/HelperScripts/reverse-geolocate"
+Repository = "https://codeberg.org/HelperScripts/reverse-geolocate"
+Issues = "https://codeberg.org/HelperScripts/reverse-geolocate/issues"
 
 [project.scripts]
 reverse-geolocate = "reverse_geolocate.reverse_geolocate:main"

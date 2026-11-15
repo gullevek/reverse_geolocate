@@ -45,7 +45,7 @@ The minimum Python version is set in `requires-python` in `pyproject.toml`, curr
 
 1. Set the new version in `requires-python` in `pyproject.toml`
 2. List all places with `rg "MIN-PY"`:
-    - `MIN-PY:` (keep in sync): set the new version, `pythonVersion` in `[tool.pyright]` and the pipx section in `README.md`, the comment stays
+    - `MIN-PY:` (keep in sync): set the new version, `pythonVersion` in `[tool.pyright]`, the Python version classifiers in `pyproject.toml` (remove the old version) and the pipx section in `README.md`, the comment stays
     - `MIN-PY <version>` up to the new version: change as the comment says and remove the comment. For 3.12:
         - `from typing_extensions import override` -> `from typing import override`, `make lint-fix` does this (ruff rule UP035)
         - remove the `typing-extensions` dependency: `uv remove typing-extensions`
